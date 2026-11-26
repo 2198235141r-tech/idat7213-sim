@@ -1,0 +1,31 @@
+name: Run IDAT7213 step test LONG (60 s)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-step-long:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up MATLAB and Simulink
+        uses: matlab-actions/setup-matlab@v3
+        with:
+          products: MATLAB Simulink
+
+      - name: Run the step test LONG
+        uses: matlab-actions/run-command@v3
+        with:
+          command: step_test_long
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: step-results-long
+          path: |
+            step_results_long.txt
+            step_plot_long.png
+            step_top_view_long.png
+          if-no-files-found: error
