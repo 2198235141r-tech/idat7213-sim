@@ -1,0 +1,31 @@
+name: Run IDAT7213 demo diagnostic
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-demo:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up MATLAB and Simulink
+        uses: matlab-actions/setup-matlab@v3
+        with:
+          products: MATLAB Simulink
+
+      - name: Run the supplied demo
+        uses: matlab-actions/run-command@v3
+        with:
+          command: demo_run
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-results
+          path: |
+            demo_results.txt
+            demo_plot.png
+            demo_top_view.png
+          if-no-files-found: error
