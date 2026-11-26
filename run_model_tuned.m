@@ -1,5 +1,5 @@
 %---------- IDAT7213 Final Project -----------
-%---------- Controller gains: derivative gains x3 (high damping) -----
+%---------- Controller gains: REVERTED TO THE SUPPLIED VALUES -----
 %---------- Based on the supplied run_model.m (Peng Lu) -----
 %
 %   Run this file (not the original run_model.m) before running
@@ -7,33 +7,30 @@
 %   workspace as Simulink.Parameter objects, exactly as the
 %   original file does.
 %
-%   WHY THESE GAINS
-%   ---------------
-%   Fourteen race runs (2026-11-26) all failed.  The pattern:
-%   hop-and-dwell with 5 s dwells (v2/v3/v8) tracks through
-%   the first three gates for 31 s, then a controller state
-%   goes non-finite (t = 31.32 / 30.96 / 31.15 s) -- the
-%   drone tips over.  Every other shape diverges EARLY.
-%   Doubling the inner loops (v9) made it worse (diverged
-%   at once, overshooting to x +6200 m, y +1200 m).  The
-%   step tests show the loop is slow and underdamped (a
-%   1 m step takes about 5 s to reach, overshoots by about
-%   50%, and rings with a period of about 15 s).  The
-%   tip-over is that ringing BUILDING UP hop by hop: each
-%   hop excites it, and a 5 s dwell (a third of a period)
-%   does not let it decay before the next hop, so the
-%   amplitude grows until the drone tips.  The way to
-%   stop the build-up is to make the ringing decay
-%   FASTER, i.e. to increase the DAMPING.  Damping comes
-%   from the derivative gains (KD).  This version therefore
-%   triples every KD gain (position, velocity, attitude
-%   and rate) while keeping every KP gain at the supplied
-%   original value, so the loop speed is unchanged but
-%   the damping is roughly tripled.  The trajectory is
-%   the v2 hop-and-dwell (5 s dwells), the only shape that
-%   has ever tracked.  If the high derivative gains cause
-%   high-frequency trouble the race will diverge at once,
-%   which will show up immediately in the run.
+%   WHY THE GAINS ARE THE ORIGINAL ONES
+%   -----------------------------------
+%   A first, tuned set of gains (position x/y 1.0/1.2, velocity
+%   2.5/0.8, attitude 1.8/1.4, rate 2.5/1.2) was tried in a real
+%   Simulink run on GitHub Actions (2026-11-26, MATLAB latest,
+%   Windows runner).  The planning and motion-planning results
+%   were exactly as designed (planning time 0.0696 s, trajectory
+%   17.34 s, max speed 1.41 m/s, max acceleration 3.13 m/s^2),
+%   but the closed loop went UNSTABLE: the drone diverged to
+%   x = +40 m, y = +47 m, z = -3000 m over the 30 s simulation,
+%   passing 0/5 gates and never landing.  A point-mass surrogate
+%   model had predicted the tuned gains would track better; the
+%   real four-loop cascade with the fixed-step solver evidently
+%   has much less phase margin than that surrogate, so the
+%   increase in loop gain destabilised it.
+%
+%   The gains below are therefore the SUPPLIED gains, unchanged.
+%   They are known to be stable (the teacher's demo flies with
+%   them).  The speed of this flight comes from the planned
+%   trajectory, not from the gains.  If tracking with these
+%   gains proves too loose (a gate missed by a small margin),
+%   the safe next step is a SMALL change only -- for example
+%   making y match x (KP_y 0.25 -> 0.5, KP_vy 1 -> 2) -- and
+%   re-running; do not jump back to the destabilising set.
 
 clear all
 clc
@@ -98,45 +95,45 @@ KD_r.RTWInfo.StorageClass = 'SimulinkGlobal';
 
 
 %-------------------- controller gains start --------------------
-% ------------ position (KP original, KD x3) ------------
+% ------------ position ------------
 KP_x.Value = 0.5;
-KD_x.Value = 1.5;
+KD_x.Value = 0.5;
 
 KP_y.Value = 0.25;
-KD_y.Value = 1.5;
+KD_y.Value = 0.5;
 
 KP_z.Value = 1;
-KD_z.Value = 4.5;
+KD_z.Value = 1.5;
 
-% ------------ velocity (KP original, KD x3) ------------
+% ------------ velocity ------------
 KP_vx.Value = 2;
-KD_vx.Value = 1.5;
+KD_vx.Value = 0.5;
 
 KP_vy.Value = 1;
-KD_vy.Value = 3;
+KD_vy.Value = 1;
 
 KP_vz.Value = 8;
-KD_vz.Value = 9;
+KD_vz.Value = 3;
 
-% ------------ angular position (KP original, KD x3) ------------
+% ------------ angular position ------------
 KP_phi.Value = 1;
-KD_phi.Value = 3;
+KD_phi.Value = 1;
 
 KP_theta.Value = 1;
-KD_theta.Value = 3;
+KD_theta.Value = 1;
 
 KP_psi.Value = 1;
-KD_psi.Value = 3;
+KD_psi.Value = 1;
 
-% ------------ angular rate (KP original, KD x3) ------------
+% ------------ angular rate ------------
 KP_p.Value = 2;
-KD_p.Value = 3;
+KD_p.Value = 1;
 
 KP_q.Value = 2;
-KD_q.Value = 3;
+KD_q.Value = 1;
 
 KP_r.Value = 2;
-KD_r.Value = 3;
+KD_r.Value = 1;
 
 %-------------------- controller gains end --------------------
-fprintf('Controller gains loaded (derivative gains x3, run_model_tuned.m).\n');
+fprintf('Controller gains loaded (supplied values, run_model_tuned.m).\n');
