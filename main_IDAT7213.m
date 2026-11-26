@@ -12,8 +12,8 @@
 %        planning time -- this is the number the brief asks for;
 %     3. smooths the path with quintic motion planning
 %        (motion_planning.m) and builds the desired trajectory;
-%     4. runs the Simulink model quadrotor_sim.slx (StopTime 120 s,
-%        set in the script so the long hop-and-dwell trajectory fits).
+%     4. runs the Simulink model quadrotor_sim.slx (StopTime 180 s,
+%        set in the script so the long step-command trajectory fits).
 %        The model reads the trajectory from the workspace through
 %        its From Workspace blocks (traj_x, traj_y, traj_z);
 %     5. checks the flown trajectory (check_flight.m): gates
@@ -60,15 +60,15 @@ assignin('base', 'traj_x', traj_x);
 assignin('base', 'traj_y', traj_y);
 assignin('base', 'traj_z', traj_z);
 
-% 5. Run the simulation (StopTime is set to 120 s below -- the
-%    hop-and-dwell trajectory is about 98 s, and the drone needs
+% 5. Run the simulation (StopTime is set to 180 s below -- the
+%    long-hold step trajectory is about 142 s, and the drone needs
 %    a few seconds after it ends to land).
 fprintf('\n--- Simulink simulation ---\n');
 fprintf('Running quadrotor_sim.slx ...\n');
 % The model must be loaded before set_param can touch it
 % (set_param on an unloaded model is what failed run #4).
 load_system('quadrotor_sim');
-set_param('quadrotor_sim', 'StopTime', '120');
+set_param('quadrotor_sim', 'StopTime', '180');
 sim('quadrotor_sim');
 
 % The To Workspace blocks save time, x_real, y_real, z_real in

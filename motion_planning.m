@@ -14,33 +14,40 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   to (0, 1, 1) with 0.05 m error, and the step tests through
 %   the same From Workspace blocks settle with 0.01 m error.
 %
-%   WHY STEPS (diagnosis after 15 failed race runs)
-%   ------------------------------------------------
-%   Every version so far used SMOOTH ramps (quintic) between
-%   waypoints, so the controller always had to chase a MOVING
-%   target.  The smooth versions (v1/v5/v7, even v7 at
-%   0.54 m/s) diverged EARLY with y going the wrong way from
-%   the start.  The hop-and-dwell versions (v2/v3/v8) tracked
-%   for 31 s and passed three gates, then tipped over at
-%   about 30 s DURING A DWELL, i.e. while holding a constant
-%   position -- so the ramps are not the only problem, but
-%   the one input shape never tried is the one the teacher
-%   actually supplied: a pure step.  With a step the
-%   controller NEVER has to track a moving target; it only
-%   ever settles to a constant target, exactly as in the
-%   demo.  If the tip-over is caused by chasing a moving
-%   target, steps remove it.  If the tip-over is purely
-%   time-based (about 30 s of flight), steps will tip at
-%   about 30 s too, which will settle that question.
+%   WHY STEPS, and WHY LONG HOLDS in v17 (after runs #17-#22)
+%   ---------------------------------------------------------
+%   The no-splitting step structure (v11/v13) is the ONLY
+%   one that passes 5/5 gates and lands -- but every such
+%   run still reports Collided: 1.  Splitting the steps
+%   (v12/v14/v15) never fixed the collision and broke the
+%   gate order and/or the landing.  Y-symmetrised gains
+%   (v16) made it slightly faster but still collided.
+%   The collision comes from the ringing LOOPS, about
+%   0.5-0.6 m wide, while the corridor between Red 2
+%   (y = 1.5) and Red 3/4 (y = 0.5) is only 0.5 m to each
+%   wall.  The ringing after a step has a period of about
+%   15 s, so with the 8 s gate holds of v11/v13 the drone
+%   is still oscillating hard when the next step arrives,
+%   and the oscillations add up.  Version 17 therefore
+%   keeps the exact v11/v13 structure and waypoints and
+%   only lengthens the holds so the ringing decays before
+%   the next step: 15 s at each gate (one full ringing
+%   period), 10 s at each detour, 5 s at the top of
+%   take-off, 10 s above the origin before landing.
+%   Total about 142 s, so the simulation StopTime is
+%   180 s.  The flight is slower, but a clean pass beats
+%   a fast collision: the brief fails any run that
+%   collides, however fast it is.
 %
 %   Holds: the step tests show a 1 m step takes about 5 s
-%   to get within 0.15 m and a 2 m step about 7 s, so each
-%   gate is held for HOLD_GATE = 8 s (long enough to pass
-%   well inside 0.5 m and partially settle) and each detour
-%   waypoint for HOLD_DETOUR = 5 s.  The flight is long
-%   (about 69 s) but it is mostly hovering, which the 60 s
+%   to get within 0.15 m and a 2 m step about 7 s.  Each
+%   gate is held for HOLD_GATE = 15 s (one full ringing
+%   period, so the drone is nearly settled before the
+%   next step) and each detour waypoint for
+%   HOLD_DETOUR = 10 s.  The flight is long (about
+%   142 s) but it is mostly hovering, which the 60 s
 %   hover diagnostic proved is stable.  Passing the gates
-%   is worth far more than flight time.
+%   without colliding is worth far more than flight time.
 %
 %   NOTE on velocity / acceleration: for a step input the
 %   commanded velocity is zero during every hold (the drone
@@ -61,10 +68,10 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   Only base MATLAB is used (no toolboxes).
 
 % ---- Parameters ----
-HOLD_GATE   = 8.0;  % hold time at each gate (s)
-HOLD_DETOUR = 5.0;  % hold time at each detour waypoint (s)
-HOLD_TAKE   = 2.0;  % hold time at the top of take-off (s)
-HOLD_HOME   = 5.0;  % hold time above the origin before landing (s)
+HOLD_GATE   = 15.0;  % hold time at each gate (s)
+HOLD_DETOUR = 10.0;  % hold time at each detour waypoint (s)
+HOLD_TAKE   = 5.0;  % hold time at the top of take-off (s)
+HOLD_HOME   = 10.0;  % hold time above the origin before landing (s)
 DT          = 0.01; % sampling period (s)
 
 % ---- 3D waypoints ----
@@ -126,6 +133,6 @@ end
 % The final sample is exactly the final waypoint.
 traj(end, :) = W(n, :);
 
-fprintf('Motion planning (step commands v11): %d waypoints, total time = %.2f s\n', n, t_total);
+fprintf('Motion planning (step commands v17): %d waypoints, total time = %.2f s\n', n, t_total);
 fprintf('  holds: gate %.0f s, detour %.0f s; commanded velocity is zero during holds (step input, as in the supplied demo)\n', HOLD_GATE, HOLD_DETOUR);
 end
