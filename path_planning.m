@@ -14,8 +14,8 @@ function [waypoints_xy, planning_time, leg_table] = path_planning()
 %
 %   Obstacles: the five red 1 m x 1 m squares appear in the top view as
 %   line segments.  A grid cell is blocked when its centre is closer
-%   than INFL = 0.25 m to any segment, so the planned path keeps at
-%   least 0.25 m clearance from every obstacle.  Diagonal steps are
+%   than INFL = 0.35 m to any segment, so the planned path keeps at
+%   least 0.35 m clearance from every obstacle.  Diagonal steps are
 %   not allowed to cut the corner of a blocked cell.
 %
 %   Outputs:
@@ -50,7 +50,7 @@ obstacles = [ -1.0, 2.0,  0.0, 2.0;   % Red 1
 
 % ---- Grid ----
 RES   = 0.1;    % grid resolution (m)
-INFL  = 0.25;   % obstacle inflation / safety clearance (m)
+INFL  = 0.35;   % obstacle inflation / safety clearance (m)
 XMIN  = -0.8; XMAX = 5.2;
 YMIN  = -1.0; YMAX = 2.5;
 nx = round((XMAX - XMIN) / RES) + 1;
