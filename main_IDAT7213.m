@@ -65,6 +65,9 @@ assignin('base', 'traj_z', traj_z);
 %    a few seconds after it ends to land).
 fprintf('\n--- Simulink simulation ---\n');
 fprintf('Running quadrotor_sim.slx ...\n');
+% The model must be loaded before set_param can touch it
+% (set_param on an unloaded model is what failed run #4).
+load_system('quadrotor_sim');
 set_param('quadrotor_sim', 'StopTime', '75');
 sim('quadrotor_sim');
 
