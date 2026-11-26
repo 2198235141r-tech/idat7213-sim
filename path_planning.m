@@ -18,11 +18,12 @@ function [waypoints_xy, planning_time, leg_table] = path_planning()
 %   least 0.35 m clearance from every obstacle.  Diagonal steps are
 %   not allowed to cut the corner of a blocked cell.
 %   The Ring 3 -> Gate 2 leg, which rounds the east tip of Red 4,
-%   uses a larger inflation INFL_TIP = 0.5 m: the drone's ringing
-%   loop around a hold point is about 0.5 m wide, and the 0.35 m
-%   detour points sit too close to Red 4.  The gate centres are
-%   0.5 m from every obstacle, so 0.5 m is the largest inflation
-%   that still leaves the gates themselves unblocked.
+%   and the Gate 2 -> Origin leg, which rounds the south tip of
+%   Red 5, use a larger inflation INFL_TIP = 0.5 m: the drone's
+%   ringing loop around a hold point is about 0.5 m wide, and the
+%   0.35 m detour points sit too close to Red 4 / Red 5.  The gate
+%   centres are 0.5 m from every obstacle, so 0.5 m is the largest
+%   inflation that still leaves the gates themselves unblocked.
 %
 %   Outputs:
 %     waypoints_xy  - N x 2 array of (x, y) waypoints, first row is the
@@ -92,9 +93,10 @@ for k = 1:(size(gates, 1) - 1)
     leg = leg + 1;
     start_xy = gates(k, :);
     goal_xy  = gates(k + 1, :);
-    % Leg 5 (Ring 3 -> Gate 2) rounds the east tip of Red 4 and
-    % uses the larger 0.5 m inflation; all other legs use 0.35 m.
-    if leg == 5
+    % Legs 5 (Ring 3 -> Gate 2) and 6 (Gate 2 -> Origin) round the
+    % tips of Red 4 and Red 5 and use the larger 0.5 m inflation;
+    % all other legs use 0.35 m.
+    if leg == 5 || leg == 6
         blocked_leg = blocked050;
         infl_leg = INFL_TIP;
     else
