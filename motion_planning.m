@@ -3,7 +3,7 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 26 -- STEP commands, like the supplied demo, plus a return-leg split):
+%   Method (version 27 -- STEP commands, like the supplied demo, plus every long return step split):
 %   the desired position is PIECEWISE CONSTANT.  It JUMPS
 %   instantly from one waypoint to the next (a step) and then
 %   HOLDS there while the drone flies to it and settles.  This
@@ -77,13 +77,14 @@ end
 W = [W; 0, 0, 0.5;     % above the origin, before landing
      0, 0, 0];         % ground, finish
 
-% ---- Split the long return step (version 26) ----
-% The step from Gate 2 (4,0) to the first return detour is
-% about 2 m long and excites a ~0.8 m northward swing that
-% hits Red 5 (x = 2).  All gates are already passed by then,
-% so splitting this one step cannot break the gate order.
-% If that step is longer than 1.5 m, insert its midpoint
-% (a detour hold) between Gate 2 and the return detour.
+% ---- Split every long return step (version 27) ----
+% The return leg has two ~2 m steps that each excite a
+% ~0.8 m swing onto Red 5 (x = 2): Gate 2 (4,0) -> first
+% return detour, and the last return detour (1.7,-1.0) ->
+% origin (0,0).  All gates are already passed by then, so
+% splitting these steps cannot break the gate order.
+% Every step after Gate 2 longer than 1.5 m gets its
+% midpoint inserted as an extra detour hold (5 s).
 MAX_RET_STEP = 1.5;
 g2 = 0;
 for i = 1:size(W, 1)
@@ -91,13 +92,20 @@ for i = 1:size(W, 1)
         g2 = i;
     end
 end
-if g2 > 0 && g2 < size(W, 1)
-    d = hypot(W(g2 + 1, 1) - W(g2, 1), W(g2 + 1, 2) - W(g2, 2));
-    if d > MAX_RET_STEP
-        mid = 0.5 * (W(g2, :) + W(g2 + 1, :));
-        W = [W(1:g2, :); mid; W(g2 + 1:end, :)];
-        fprintf('  return-leg split: Gate 2 -> return detour %.2f m split at (%.2f, %.2f)\n', d, mid(1), mid(2));
+if g2 > 0
+    Wnew = W(1:g2, :);
+    for i = (g2 + 1):size(W, 1)
+        a = W(i - 1, :);
+        b = W(i, :);
+        d = hypot(b(1) - a(1), b(2) - a(2));
+        if d > MAX_RET_STEP && abs(b(3) - 0.5) < 1e-9
+            mid = 0.5 * (a + b);
+            Wnew = [Wnew; mid]; %#ok<AGROW>
+            fprintf('  return-leg split: (%.2f, %.2f) -> (%.2f, %.2f) %.2f m split at (%.2f, %.2f)\n', a(1), a(2), b(1), b(2), d, mid(1), mid(2));
+        end
+        Wnew = [Wnew; b]; %#ok<AGROW>
     end
+    W = Wnew;
 end
 n = size(W, 1);
 
