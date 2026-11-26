@@ -17,6 +17,12 @@ function [waypoints_xy, planning_time, leg_table] = path_planning()
 %   than INFL = 0.35 m to any segment, so the planned path keeps at
 %   least 0.35 m clearance from every obstacle.  Diagonal steps are
 %   not allowed to cut the corner of a blocked cell.
+%   The Ring 3 -> Gate 2 leg, which rounds the east tip of Red 4,
+%   uses a larger inflation INFL_TIP = 0.5 m: the drone's ringing
+%   loop around a hold point is about 0.5 m wide, and the 0.35 m
+%   detour points sit too close to Red 4.  The gate centres are
+%   0.5 m from every obstacle, so 0.5 m is the largest inflation
+%   that still leaves the gates themselves unblocked.
 %
 %   Outputs:
 %     waypoints_xy  - N x 2 array of (x, y) waypoints, first row is the
@@ -51,6 +57,7 @@ obstacles = [ -1.0, 2.0,  0.0, 2.0;   % Red 1
 % ---- Grid ----
 RES   = 0.1;    % grid resolution (m)
 INFL  = 0.35;   % obstacle inflation / safety clearance (m)
+INFL_TIP = 0.5; % larger inflation for the Ring 3 -> Gate 2 leg only
 XMIN  = -0.8; XMAX = 5.2;
 YMIN  = -1.0; YMAX = 2.5;
 nx = round((XMAX - XMIN) / RES) + 1;
@@ -58,13 +65,20 @@ ny = round((YMAX - YMIN) / RES) + 1;
 
 % Blocked cells: distance from the cell centre to the nearest
 % obstacle segment is smaller than the inflation radius.
-blocked = false(ny, nx);
+% Two grids: the standard 0.35 m one, and the 0.5 m one used only
+% for the Ring 3 -> Gate 2 leg.
+blocked035 = false(ny, nx);
+blocked050 = false(ny, nx);
 for j = 1:ny
     y = YMIN + (j - 1) * RES;
     for i = 1:nx
         x = XMIN + (i - 1) * RES;
-        if min_seg_dist(x, y, obstacles) < INFL
-            blocked(j, i) = true;
+        d = min_seg_dist(x, y, obstacles);
+        if d < INFL
+            blocked035(j, i) = true;
+        end
+        if d < INFL_TIP
+            blocked050(j, i) = true;
         end
     end
 end
@@ -78,9 +92,18 @@ for k = 1:(size(gates, 1) - 1)
     leg = leg + 1;
     start_xy = gates(k, :);
     goal_xy  = gates(k + 1, :);
+    % Leg 5 (Ring 3 -> Gate 2) rounds the east tip of Red 4 and
+    % uses the larger 0.5 m inflation; all other legs use 0.35 m.
+    if leg == 5
+        blocked_leg = blocked050;
+        infl_leg = INFL_TIP;
+    else
+        blocked_leg = blocked035;
+        infl_leg = INFL;
+    end
     [path_xy, n_nodes] = astar_grid(start_xy, goal_xy, ...
-        blocked, XMIN, YMIN, RES, nx, ny);
-    short_xy = shortcut_path(path_xy, obstacles, INFL);
+        blocked_leg, XMIN, YMIN, RES, nx, ny);
+    short_xy = shortcut_path(path_xy, obstacles, infl_leg);
     leg_len = sum(sqrt(sum(diff(short_xy, 1, 1).^2, 2)));
     leg_table(leg, :) = [leg, n_nodes, size(short_xy, 1), leg_len];
     fprintf('Leg %d: %s -> %s, A* nodes = %d, shortcut nodes = %d, length = %.2f m\n', ...
