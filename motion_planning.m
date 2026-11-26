@@ -62,7 +62,7 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 
 % ---- Parameters ----
 HOLD_GATE   = 8.0;  % hold time at each gate (s)
-HOLD_DETOUR = 5.0;  % hold time at each detour waypoint (s)
+HOLD_DETOUR = 8.0;  % hold time at each detour waypoint (s)
 HOLD_TAKE   = 2.0;  % hold time at the top of take-off (s)
 HOLD_HOME   = 5.0;  % hold time above the origin before landing (s)
 DT          = 0.01; % sampling period (s)
