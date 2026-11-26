@@ -65,7 +65,13 @@ for g = 1:5
 end
 
 % Closest approach to any obstacle segment (top view).
+% Track exactly WHERE and WHEN the closest approach happens,
+% and which segment it is, so a collision can be located
+% instead of guessed at from the plot.
 min_obstacle_dist = inf;
+min_obstacle_k = 0;
+min_obstacle_s = 0;
+obstacle_names = {'Red 1 (y=2)', 'Red 2 (y=1.5)', 'Red 3 (y=0.5, x 2.5-3.5)', 'Red 4 (y=0.5, x 3.5-4.5)', 'Red 5 (x=2)'};
 for k = 1:n
     for s = 1:size(obstacles, 1)
         x1 = obstacles(s, 1); y1 = obstacles(s, 2);
@@ -79,7 +85,11 @@ for k = 1:n
             t = max(0, min(1, t));
         end
         d = hypot(x_real(k) - (x1 + t * dx), y_real(k) - (y1 + t * dy));
-        min_obstacle_dist = min(min_obstacle_dist, d);
+        if d < min_obstacle_dist
+            min_obstacle_dist = d;
+            min_obstacle_k = k;
+            min_obstacle_s = s;
+        end
     end
 end
 collided = min_obstacle_dist < 0.05;
@@ -99,6 +109,9 @@ end
 fprintf('Gates passed (in order): %d / 5\n', gates_passed);
 fprintf('Closest approach to any obstacle: %.3f m  (collision: %s)\n', ...
     min_obstacle_dist, mat2str(collided));
+fprintf('  closest point: (x=%.3f, y=%.3f, z=%.3f) at t=%.2f s, segment %d %s\n', ...
+    x_real(min_obstacle_k), y_real(min_obstacle_k), z_real(min_obstacle_k), ...
+    time(min_obstacle_k), min_obstacle_s, obstacle_names{min_obstacle_s});
 if landed
     fprintf('Landed at origin: yes, flight time = %.2f s\n', flight_time);
 else
@@ -112,5 +125,10 @@ results = struct('gates_passed', gates_passed, ...
     'flight_time', flight_time, ...
     'gate_dist', gate_dist, 'gate_time', gate_time, ...
     'min_obstacle_dist', min_obstacle_dist, ...
+    'min_obstacle_x', x_real(min_obstacle_k), ...
+    'min_obstacle_y', y_real(min_obstacle_k), ...
+    'min_obstacle_z', z_real(min_obstacle_k), ...
+    'min_obstacle_t', time(min_obstacle_k), ...
+    'min_obstacle_s', min_obstacle_s, ...
     'collided', collided, 'landed', landed);
 end

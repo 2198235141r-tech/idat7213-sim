@@ -147,6 +147,7 @@ for g = 1:5
     fprintf(fid, '  Gate %d: closest %.3f m at %.2f s\n', g, results.gate_dist(g), results.gate_time(g));
 end
 fprintf(fid, 'Closest approach to any obstacle: %.3f m\n', results.min_obstacle_dist);
+fprintf(fid, '  closest point: (x=%.3f, y=%.3f, z=%.3f) at t=%.2f s, segment %d\n', results.min_obstacle_x, results.min_obstacle_y, results.min_obstacle_z, results.min_obstacle_t, results.min_obstacle_s);
 fprintf(fid, 'Collided: %d\n', results.collided);
 fprintf(fid, 'Landed at origin: %d\n', results.landed);
 fprintf(fid, 'Flight time (landing): %.2f s\n', results.flight_time);
