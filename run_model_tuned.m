@@ -1,5 +1,5 @@
 %---------- IDAT7213 Final Project -----------
-%---------- Controller gains: SUPPLIED ORIGINALS (for v6 fast race) -----
+%---------- Controller gains: inner loops x2, outer loops original -----
 %---------- Based on the supplied run_model.m (Peng Lu) -----
 %
 %   Run this file (not the original run_model.m) before running
@@ -7,35 +7,31 @@
 %   workspace as Simulink.Parameter objects, exactly as the
 %   original file does.
 %
-%   WHY THE GAINS ARE THE SUPPLIED ORIGINALS
-%   ----------------------------------------
-%   The y-symmetrised set (KP_y 0.25 -> 0.5, KP_vy 1 -> 2,
-%   KD_vy 1 -> 0.5) made y track a step as fast as x, and a
-%   60 s hover with those gains is stable.  But in a RACE
-%   (a moving target, repeated moves) it diverged EARLY
-%   every time: the smooth v5 (23 s) went the wrong way in
-%   y from about t = 10 s, and the fast hop-and-dwell v6
-%   (28 s) diverged before the first gate and even hit an
-%   obstacle (closest approach 0.006 m).  The y-sym change
-%   cut the y velocity loop's damping sharply (KD_vy /
-%   sqrt(KP_vy) from 1.0 down to 0.35), and with a target
-%   that keeps moving the underdamped ringing builds up
-%   from the very first hop.  The supplied gains are the
-%   most damped set available (y velocity-loop damping
-%   1.0), and they are known to be stable (the teacher's
-%   demo and a step test both fly with them).  The y
-%   channel is slow with them (about 10 s to settle 1 m),
-%   but the v6 trajectory is hop-and-dwell with a full
-%   stop at every waypoint, and a gate is scored by
-%   closest approach over the whole flight (under 0.5 m),
-%   not by being exactly on the gate at the end of a
-%   dwell -- so a slow y that is still closing in on the
-%   gate can still score.  Combined with the v6 flight
-%   time of about 28 s (under the ~30 s tip-over seen in
-%   runs #5, #6 and #8), this is the most damped set
-%   with the fastest finishing trajectory.  The earlier
-%   all-loops-raised tuned set is NOT used -- it
-%   destabilised the real cascade in run 1.
+%   WHY THESE GAINS
+%   ---------------
+%   Thirteen race runs (2026-11-26) all failed.  The pattern:
+%   hop-and-dwell with 5 s dwells (v2/v3/v8) tracks through
+%   the first three gates for 31 s, then a controller state
+%   goes non-finite (t = 31.32 / 30.96 / 31.15 s) -- the
+%   drone tips over.  Every other shape (smooth v1/v5/v7,
+%   fast hop-and-dwell v6) diverges EARLY, before the first
+%   gate, with y going the wrong way from the start.  The
+%   y wrong-way dip (about 0.5 m, seen in the step tests)
+%   is an ATTITUDE-dynamics effect: to accelerate in y the
+%   drone must first roll, and the roll itself initially
+%   pushes it the wrong way.  The outer loops (position /
+%   velocity) can only react to that dip, not prevent it.
+%   The inner loops -- attitude (KP 1, KD 1) and rate
+%   (KP 2, KD 1) -- set how fast the drone can tilt.  This
+%   version doubles the inner-loop gains (attitude KP/KD
+%   1 -> 2, rate KP 2 -> 4, KD 1 -> 2) so the drone tilts
+%   twice as fast, which should shrink the wrong-way dip
+%   and the oscillation it feeds, while the outer loops
+%   stay at the supplied originals (the most damped set).
+%   The trajectory is the v2 hop-and-dwell (5 s dwells),
+%   the only shape that has ever tracked.  If the inner
+%   loops go unstable at these gains the race will diverge
+%   at once, which will show up immediately in the run.
 
 clear all
 clc
@@ -100,7 +96,7 @@ KD_r.RTWInfo.StorageClass = 'SimulinkGlobal';
 
 
 %-------------------- controller gains start --------------------
-% ------------ position ------------
+% ------------ position (supplied originals) ------------
 KP_x.Value = 0.5;
 KD_x.Value = 0.5;
 
@@ -110,7 +106,7 @@ KD_y.Value = 0.5;
 KP_z.Value = 1;
 KD_z.Value = 1.5;
 
-% ------------ velocity ------------
+% ------------ velocity (supplied originals) ------------
 KP_vx.Value = 2;
 KD_vx.Value = 0.5;
 
@@ -120,25 +116,25 @@ KD_vy.Value = 1;
 KP_vz.Value = 8;
 KD_vz.Value = 3;
 
-% ------------ angular position ------------
-KP_phi.Value = 1;
-KD_phi.Value = 1;
+% ------------ angular position (DOUBLED) ------------
+KP_phi.Value = 2;
+KD_phi.Value = 2;
 
-KP_theta.Value = 1;
-KD_theta.Value = 1;
+KP_theta.Value = 2;
+KD_theta.Value = 2;
 
-KP_psi.Value = 1;
-KD_psi.Value = 1;
+KP_psi.Value = 2;
+KD_psi.Value = 2;
 
-% ------------ angular rate ------------
-KP_p.Value = 2;
-KD_p.Value = 1;
+% ------------ angular rate (DOUBLED) ------------
+KP_p.Value = 4;
+KD_p.Value = 2;
 
-KP_q.Value = 2;
-KD_q.Value = 1;
+KP_q.Value = 4;
+KD_q.Value = 2;
 
-KP_r.Value = 2;
-KD_r.Value = 1;
+KP_r.Value = 4;
+KD_r.Value = 2;
 
 %-------------------- controller gains end --------------------
-fprintf('Controller gains loaded (supplied originals, run_model_tuned.m).\n');
+fprintf('Controller gains loaded (inner loops x2, outer originals, run_model_tuned.m).\n');
