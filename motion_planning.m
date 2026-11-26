@@ -3,8 +3,8 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 14 -- STEP commands with split steps,
-%   LONG sub-step holds): the desired position is PIECEWISE
+%   Method (version 15 -- STEP commands, split ONLY the
+%   longest steps): the desired position is PIECEWISE
 %   CONSTANT.  It JUMPS instantly from one waypoint to the
 %   next (a step) and then HOLDS there while the drone flies
 %   to it and settles.  This is exactly the form of the
@@ -13,28 +13,35 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   the only input shape the controller has been proven to
 %   fly.
 %
-%   WHY v14 (after runs #17-#19)
-%   -----------------------------
-%   Version 11 (pure steps, 69 s) and version 13 (same steps
-%   with 0.35 m inflation, 74 s) both PASSED all five gates
-%   and LANDED -- but both reported Collided: 1 (closest
-%   approach 0.000 m).  The extra clearance did not help,
-%   because the collision is not at the detours: the gates
-%   Ring 2 and Ring 3 sit in a 1 m-wide corridor between
-%   Red 2 (y = 1.5) and Red 3/4 (y = 0.5), only 0.5 m from
-%   each wall, and the 2.0 m step from Ring 2 (2, 1) to
-%   Ring 3 (4, 1) makes the drone ring in a loop about 1 m
-%   wide, which must hit a corridor wall.  Version 12 tried
-%   splitting the long steps but gave the sub-steps only
-%   3 s holds, so the drone never settled and wandered
-%   (3/5 gates, out of order).  Version 14 therefore keeps
-%   the split steps (no step longer than MAX_STEP = 1.0 m,
-%   so the loop around any gate is at most about 0.5 m)
-%   BUT gives every sub-step a full 5 s hold, the same as a
-%   detour, so the drone actually settles at each one and
-%   stays in sync with the commands.  Gate holds are 6 s
-%   (the step tests show 5 s is enough to get within
-%   0.15 m).  Total about 99 s, landing well inside the
+%   WHY v15 (after runs #17-#20, and after LOOKING at the
+%   flown-path plot of run #19)
+%   -----------------------------------------------
+%   Versions 11 and 13 (pure steps, 13-14 waypoints, 8 s
+%   gate holds) both PASSED all five gates and LANDED --
+%   but both reported Collided: 1.  The run #19 flown-path
+%   plot shows why: the drone's ringing LOOPS are about
+%   1 m wide, and they swing through the 1 m-wide corridor
+%   between Red 2 (y = 1.5) and Red 3/4 (y = 0.5) and
+%   around the vertical Red 5 (x = 2).  The worst loop
+%   follows the 2.0 m step from Ring 2 (2, 1) to Ring 3
+%   (4, 1) straight along that corridor.
+%     - Version 12 split EVERY step over 1.0 m with only
+%       3 s sub-step holds: the drone never settled and
+%       wandered (3/5 gates, out of order).
+%     - Version 14 split every step over 1.0 m with 5 s
+%       sub-step holds: still only 3/5 gates, out of
+%       order, and it did NOT land.  Too many waypoints
+%       (21) breaks the drone's synchronisation no matter
+%       how long the holds are.
+%   So splitting is the right medicine but only in a
+%   minimal dose.  Version 15 splits ONLY the steps over
+%   MAX_STEP = 1.5 m -- just three of them: the 2.0 m
+%   corridor step (2, 1) -> (4, 1) via (3, 1), and the two
+%   long return steps (4, 0) -> (2, -0.9) via (3, -0.45)
+%   and (2, -0.9) -> (0, 0) via (1, -0.45).  Every other
+%   step is left exactly as in v13, gate holds stay 8 s,
+%   and each sub-step gets a full 5 s hold.  Only 17
+%   waypoints, total about 89 s, landing well inside the
 %   120 s simulation.
 %
 %   NOTE on velocity / acceleration: for a step input the
@@ -56,12 +63,12 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   Only base MATLAB is used (no toolboxes).
 
 % ---- Parameters ----
-HOLD_GATE   = 6.0;  % hold time at each gate (s)
+HOLD_GATE   = 8.0;  % hold time at each gate (s)
 HOLD_DETOUR = 5.0;  % hold time at each detour waypoint (s)
 HOLD_SUB    = 5.0;  % hold time at each sub-step waypoint (s)
 HOLD_TAKE   = 2.0;  % hold time at the top of take-off (s)
 HOLD_HOME   = 5.0;  % hold time above the origin before landing (s)
-MAX_STEP    = 1.0;  % longest allowed step (m); longer steps are split
+MAX_STEP    = 1.5;  % longest allowed step (m); longer steps are split
 DT          = 0.01; % sampling period (s)
 
 % ---- 3D waypoints ----
@@ -156,6 +163,6 @@ end
 % The final sample is exactly the final waypoint.
 traj(end, :) = W(n, :);
 
-fprintf('Motion planning (step commands v14): %d waypoints, total time = %.2f s\n', n, t_total);
+fprintf('Motion planning (step commands v15): %d waypoints, total time = %.2f s\n', n, t_total);
 fprintf('  holds: gate %.0f s, detour %.0f s, sub-step %.0f s; commanded velocity is zero during holds (step input, as in the supplied demo)\n', HOLD_GATE, HOLD_DETOUR, HOLD_SUB);
 end
