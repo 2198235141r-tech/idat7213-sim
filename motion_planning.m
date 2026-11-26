@@ -1,32 +1,50 @@
 function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
-%MOTION_PLANNING  Smooth the A* waypoints into a flyable trajectory.
+%MOTION_PLANNING  Turn the A* waypoints into a flyable trajectory.
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method: quintic (minimum-jerk) polynomial per segment, with
-%   zero acceleration at both ends of every segment, so position,
-%   velocity and acceleration are all continuous along the whole
-%   flight.  The trajectory is built in three phases:
-%     1. take-off: (0,0,0) -> (0,0,0.5) in 1.2 s, coming to a stop;
-%     2. cruise at z = 0.5 m through the A* waypoints, passing
-%        through every gate centre at full cruise height;
-%     3. landing: (0,0,0.5) -> (0,0,0) in 1.8 s, coming to a stop.
+%   Method (version 2 -- hop and dwell): quintic (minimum-jerk)
+%   polynomial per segment, with zero velocity AND zero
+%   acceleration at both ends of every segment, so the drone
+%   comes to a FULL STOP at every waypoint.  At each of the five
+%   gates the drone then DWELLS (holds position) for DWELL
+%   seconds, so it can settle onto the gate centre before moving
+%   on.  The trajectory is built in three phases:
+%     1. take-off: (0,0,0) -> (0,0,0.5) in T_TAKE s, stopping;
+%     2. cruise at z = 0.5 m through the A* waypoints, stopping
+%        at every waypoint and dwelling at every gate;
+%     3. landing: (0,0,0.5) -> (0,0,0) in T_LAND s, stopping.
 %
-%   Via velocities: at an interior waypoint the velocity points along
-%   the average of the incoming and outgoing directions, with
-%   magnitude V_CRUISE * max(0.25, cos(turn angle)).  The drone
-%   therefore keeps its speed on straight legs and slows down for
-%   sharp turns (for example the detour around Red 4 between
-%   Ring 3 and Gate 2, and the detour around Red 5 on the way home).
-%   The take-off-top and landing-top waypoints have zero velocity,
-%   so the vertical and horizontal motions do not mix.
+%   WHY HOP AND DWELL (diagnosis from real Simulink runs)
+%   ------------------------------------------------------
+%   The first version of this file flew the waypoints as one
+%   continuous smooth trajectory (non-zero via velocities,
+%   average 0.9 m/s, peak 1.41 m/s).  It diverged in three real
+%   Simulink runs on GitHub Actions (2026-11-26): with tuned
+%   gains the drone flew to x = +40 m, y = +47 m, z = -3000 m;
+%   with the supplied gains to x = -140 m, y = -160 m,
+%   z = -3000 m; with y symmetrised to x to x = -95 m,
+%   y = -280 m, z = -3000 m.  In all three cases 0/5 gates.
+%   But the supplied demo (Step commands) and a step test
+%   through the same From Workspace blocks both fly stably and
+%   settle (end errors 0.05 m and 0.01 m), and the y-symmetrised
+%   step test shows y now tracks like x.  So the model, the
+%   input path and the gains are all fine -- the fault is a
+%   continuously moving target.  The step responses also show
+%   WHY: the closed loop is slow and underdamped (a 1 m step
+%   takes about 5 s to reach, overshoots by about 50%, and
+%   rings for 10-20 s).  It can only follow targets that stop
+%   and wait.  Hence this version: full stop at every waypoint,
+%   dwell at every gate.  It is slower (about 50 s instead of
+%   17 s), but it is built from exactly the step moves the
+%   controller has been proven to fly, so it should pass all
+%   five gates.  Passing the gates is worth far more than
+%   flight time.
 %
-%   Segment durations are set by an average speed V_AVG = 0.9 m/s,
-%   with a minimum of 0.9 s per segment.  With these settings the
-%   planned trajectory has a maximum speed of about 1.4 m/s and a
-%   maximum acceleration of about 3.1 m/s^2 (checked in the Python
-%   prototype of the same algorithm), which the tuned controller
-%   can follow without cutting corners into the obstacles.
+%   Segment durations: each hop lasts max(length / V_HOP,
+%   T_MIN).  With V_HOP = 0.6 m/s the peak speed of a hop is
+%   about 1.1 m/s and the peak acceleration about 1.0 m/s^2,
+%   far gentler than the 3.1 m/s^2 of version 1.
 %
 %   Outputs (sampled at dt = 0.01 s):
 %     t_traj   - M x 1 time vector (s)
@@ -38,12 +56,12 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   Only base MATLAB is used (no toolboxes).
 
 % ---- Parameters ----
-V_CRUISE = 1.1;   % via-point speed on straight legs (m/s)
-V_AVG    = 0.9;   % average speed used to set segment times (m/s)
-T_MIN    = 0.9;   % minimum segment duration (s)
-T_TAKE   = 1.2;   % take-off duration (s)
-T_LAND   = 1.8;   % landing duration (s)
-DT       = 0.01;  % sampling period (s)
+V_HOP  = 0.6;   % average speed used to set hop times (m/s)
+T_MIN  = 2.0;   % minimum hop duration (s)
+DWELL  = 5.0;   % hold time at each gate (s)
+T_TAKE = 2.0;   % take-off duration (s)
+T_LAND = 2.5;   % landing duration (s)
+DT     = 0.01;  % sampling period (s)
 
 % ---- 3D waypoints ----
 % waypoints_xy already starts at (0,0) and ends at (0,0).
@@ -56,36 +74,48 @@ W = [W; 0, 0, 0.5;     % above the origin, before landing
      0, 0, 0];         % ground, finish
 n = size(W, 1);
 
-% ---- Segment durations ----
-seg_len = sqrt(sum(diff(W, 1, 1).^2, 2));
-seg_time = max(seg_len / V_AVG, T_MIN);
-seg_time(1) = T_TAKE;
-seg_time(end) = T_LAND;
-
-% ---- Via velocities ----
-V = zeros(n, 3);
-for i = 2:(n - 1)
-    if i == 2 || i == n - 1
-        V(i, :) = 0;   % full stop at take-off top / landing top
-        continue;
+% ---- Which waypoints are gates (for the dwell) ----
+gate_xy = [0, 1; 0.5, 2; 2, 1; 4, 1; 4, 0];
+is_gate = false(n, 1);
+for i = 1:n
+    for g = 1:5
+        if abs(W(i, 1) - gate_xy(g, 1)) < 1e-9 && abs(W(i, 2) - gate_xy(g, 2)) < 1e-9
+            is_gate(i) = true;
+        end
     end
-    d_in  = W(i, :) - W(i - 1, :);
-    d_out = W(i + 1, :) - W(i, :);
-    u_in  = d_in / norm(d_in);
-    u_out = d_out / norm(d_out);
-    cosang = max(-1, min(1, dot(u_in, u_out)));
-    factor = max(0.25, cosang);
-    direction = W(i + 1, :) - W(i - 1, :);
-    direction(3) = 0;  % cruise waypoints: no vertical velocity
-    direction = direction / norm(direction);
-    V(i, :) = direction * V_CRUISE * factor;
 end
+
+% ---- Segment list: hops, plus a dwell after each gate ----
+% Each segment goes from S(j,:) to E(j,:) in seg_time(j), with
+% zero velocity and zero acceleration at both ends.
+S = zeros(0, 3); E = zeros(0, 3); seg_time = zeros(0, 1);
+for i = 1:(n - 1)
+    L = norm(W(i + 1, :) - W(i, :));
+    if i == 1
+        T = T_TAKE;
+    elseif i == n - 1
+        T = T_LAND;
+    else
+        T = max(L / V_HOP, T_MIN);
+    end
+    S = [S; W(i, :)]; %#ok<AGROW>
+    E = [E; W(i + 1, :)]; %#ok<AGROW>
+    seg_time = [seg_time; T]; %#ok<AGROW>
+    if is_gate(i + 1) && i + 1 < n
+        % Dwell at the gate just reached (skip the final origin).
+        S = [S; W(i + 1, :)]; %#ok<AGROW>
+        E = [E; W(i + 1, :)]; %#ok<AGROW>
+        seg_time = [seg_time; DWELL]; %#ok<AGROW>
+    end
+end
+n_seg = size(S, 1);
 
 % ---- Quintic coefficients, one segment at a time ----
 % For one axis, p(tau) = a0 + a1*tau + a2*tau^2 + a3*tau^3
-%   + a4*tau^4 + a5*tau^5, with a0 = p0, a1 = v0, a2 = 0, and
-%   a3, a4, a5 solved from p(T) = p1, v(T) = v1, a(T) = 0.
-n_seg = n - 1;
+%   + a4*tau^4 + a5*tau^5, with a0 = p0, a1 = 0, a2 = 0, and
+%   a3, a4, a5 solved from p(T) = p1, v(T) = 0, a(T) = 0.
+%   (A dwell segment has p0 = p1, so all coefficients are 0
+%   except a0 -- the position simply stays put.)
 coeff = zeros(n_seg, 3, 6);   % segment x axis x [a0..a5]
 for i = 1:n_seg
     T = seg_time(i);
@@ -93,11 +123,9 @@ for i = 1:n_seg
          3*T^2,  4*T^3,  5*T^4;
          6*T,   12*T^2, 20*T^3];
     for d = 1:3
-        b = [W(i + 1, d) - W(i, d) - V(i, d) * T;
-             V(i + 1, d) - V(i, d);
-             0];
+        b = [E(i, d) - S(i, d); 0; 0];
         a345 = A \ b;
-        coeff(i, d, :) = [W(i, d), V(i, d), 0, a345(1), a345(2), a345(3)];
+        coeff(i, d, :) = [S(i, d), 0, 0, a345(1), a345(2), a345(3)];
     end
 end
 
@@ -122,11 +150,11 @@ for m = 1:M
     end
 end
 % Hold the final point exactly at the last sample.
-traj(end, :) = W(end, :);
+traj(end, :) = E(end, :);
 traj_vel(end, :) = 0;
 traj_acc(end, :) = 0;
 
-fprintf('Motion planning: %d waypoints, %d segments, total time = %.2f s\n', ...
+fprintf('Motion planning (hop and dwell): %d waypoints, %d segments, total time = %.2f s\n', ...
     n, n_seg, t_total);
 fprintf('  max speed = %.2f m/s, max acceleration = %.2f m/s^2\n', ...
     max(sqrt(sum(traj_vel.^2, 2))), max(sqrt(sum(traj_acc.^2, 2))));
