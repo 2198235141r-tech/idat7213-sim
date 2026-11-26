@@ -1,0 +1,32 @@
+name: Run IDAT7213 Simulink
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-sim:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up MATLAB and Simulink
+        uses: matlab-actions/setup-matlab@v3
+        with:
+          products: MATLAB Simulink
+
+      - name: Run the simulation
+        uses: matlab-actions/run-command@v3
+        with:
+          command: main_IDAT7213
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-results
+          path: |
+            results_summary.txt
+            flown_top_view.png
+            position_vs_time.png
+            planning_top_view.png
+          if-no-files-found: error
