@@ -3,13 +3,15 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 2 -- hop and dwell): quintic (minimum-jerk)
-%   polynomial per segment, with zero velocity AND zero
-%   acceleration at both ends of every segment, so the drone
-%   comes to a FULL STOP at every waypoint.  At each of the five
-%   gates the drone then DWELLS (holds position) for DWELL
-%   seconds, so it can settle onto the gate centre before moving
-%   on.  The trajectory is built in three phases:
+%   Method (version 3 -- hop and dwell, short hops): quintic
+%   (minimum-jerk) polynomial per segment, with zero velocity
+%   AND zero acceleration at both ends of every segment, so
+%   the drone comes to a FULL STOP at every waypoint.  At each
+%   of the five gates the drone then DWELLS (holds position)
+%   for DWELL seconds, so it can settle onto the gate centre
+%   before moving on.  No cruise hop is longer than MAX_HOP
+%   (long hops are split into equal sub-hops, each a full
+%   stop).  The trajectory is built in three phases:
 %     1. take-off: (0,0,0) -> (0,0,0.5) in T_TAKE s, stopping;
 %     2. cruise at z = 0.5 m through the A* waypoints, stopping
 %        at every waypoint and dwelling at every gate;
@@ -41,9 +43,24 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   five gates.  Passing the gates is worth far more than
 %   flight time.
 %
+%   VERSION 3 (2026-11-26, after run #5): the hop-and-dwell
+%   flight got much further -- it flew 31 s, through the
+%   first three gates and the long 2 m hop to Ring 3 -- but
+%   then a controller state went non-finite at t = 31.32 s
+%   while dwelling at Ring 3, i.e. the drone tipped over.
+%   The trigger was the longest hop: a 2 m hop lets the
+%   drone lag far behind the moving target, so it arrives
+%   with a large error and the controller over-corrects.
+%   Version 3 therefore splits every cruise hop longer
+%   than MAX_HOP = 1.2 m into equal sub-hops (each a full
+%   stop) and slows the hops to V_HOP = 0.5 m/s, so the
+%   drone never has to chase a target more than about 1 m
+%   away.
+%
 %   Segment durations: each hop lasts max(length / V_HOP,
-%   T_MIN).  With V_HOP = 0.6 m/s the peak speed of a hop is
-%   about 1.1 m/s and the peak acceleration about 1.0 m/s^2,
+%   T_MIN).  With V_HOP = 0.5 m/s and hops no longer than
+%   MAX_HOP = 1.2 m, the peak speed of a hop is about
+%   0.9 m/s and the peak acceleration about 0.7 m/s^2,
 %   far gentler than the 3.1 m/s^2 of version 1.
 %
 %   Outputs (sampled at dt = 0.01 s):
@@ -56,9 +73,10 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   Only base MATLAB is used (no toolboxes).
 
 % ---- Parameters ----
-V_HOP  = 0.6;   % average speed used to set hop times (m/s)
+V_HOP  = 0.5;   % average speed used to set hop times (m/s)
 T_MIN  = 2.0;   % minimum hop duration (s)
 DWELL  = 5.0;   % hold time at each gate (s)
+MAX_HOP = 1.2;  % longest allowed cruise hop (m); longer hops are split
 T_TAKE = 2.0;   % take-off duration (s)
 T_LAND = 2.5;   % landing duration (s)
 DT     = 0.01;  % sampling period (s)
@@ -72,6 +90,29 @@ for k = 2:(size(waypoints_xy, 1) - 1)
 end
 W = [W; 0, 0, 0.5;     % above the origin, before landing
      0, 0, 0];         % ground, finish
+n = size(W, 1);
+
+% ---- Split long cruise hops into short hops (v3) ----
+% A hop longer than MAX_HOP lets the drone lag far behind
+% the moving target and arrive with a large error, which is
+% what tipped the drone over in run #5.  Split any cruise
+% hop (both ends at z = 0.5) longer than MAX_HOP into equal
+% sub-hops, each ending in a full stop.  Take-off and
+% landing are vertical and short, so they are not split.
+W2 = W(1, :);
+for i = 1:(n - 1)
+    a = W(i, :); b = W(i + 1, :);
+    L = norm(b - a);
+    if a(3) == 0.5 && b(3) == 0.5 && L > MAX_HOP
+        nsub = ceil(L / MAX_HOP);
+        for s = 1:nsub
+            W2 = [W2; a + (b - a) * s / nsub]; %#ok<AGROW>
+        end
+    else
+        W2 = [W2; b]; %#ok<AGROW>
+    end
+end
+W = W2;
 n = size(W, 1);
 
 % ---- Which waypoints are gates (for the dwell) ----
@@ -154,7 +195,7 @@ traj(end, :) = E(end, :);
 traj_vel(end, :) = 0;
 traj_acc(end, :) = 0;
 
-fprintf('Motion planning (hop and dwell): %d waypoints, %d segments, total time = %.2f s\n', ...
+fprintf('Motion planning (hop and dwell v3): %d waypoints, %d segments, total time = %.2f s\n', ...
     n, n_seg, t_total);
 fprintf('  max speed = %.2f m/s, max acceleration = %.2f m/s^2\n', ...
     max(sqrt(sum(traj_vel.^2, 2))), max(sqrt(sum(traj_acc.^2, 2))));
