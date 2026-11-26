@@ -3,7 +3,7 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 3 -- hop and dwell, short hops): quintic
+%   Method (version 4 -- hop and dwell, long dwells): quintic
 %   (minimum-jerk) polynomial per segment, with zero velocity
 %   AND zero acceleration at both ends of every segment, so
 %   the drone comes to a FULL STOP at every waypoint.  At each
@@ -57,10 +57,30 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   drone never has to chase a target more than about 1 m
 %   away.
 %
+%   VERSION 4 (2026-11-26, after run #6): splitting the
+%   hops did NOT help -- v3 blew up at t = 30.96 s, almost
+%   the same time as v2 (t = 31.32 s).  So the trigger is
+%   not hop length.  A 60 s hover diagnostic (one step
+%   move, then a long hover, same y-sym gains) then flew
+%   stably for the full 60 s and settled to (0, 1, 1) with
+%   0.00 m end error -- so the loop CAN fly for 60 s, and
+%   the race failure is the oscillation BUILDING UP over
+%   repeated hops: each hop excites the loop's underdamped
+%   ringing, and a 5 s dwell (about half an oscillation
+%   period) does not let it decay before the next hop, so
+%   the amplitude grows hop by hop until the drone tips
+%   over.  Version 4 therefore lengthens the dwell to
+%   DWELL = 12 s (the ringing decays to roughly a fifth
+%   of its arrival size in that time) and slows the hops
+%   further to V_HOP = 0.4 m/s, so each hop excites less
+%   ringing in the first place.  The flight gets longer
+%   (about 98 s), but it is mostly hovering, which the
+%   60 s test proved is stable.
+%
 %   Segment durations: each hop lasts max(length / V_HOP,
-%   T_MIN).  With V_HOP = 0.5 m/s and hops no longer than
+%   T_MIN).  With V_HOP = 0.4 m/s and hops no longer than
 %   MAX_HOP = 1.2 m, the peak speed of a hop is about
-%   0.9 m/s and the peak acceleration about 0.7 m/s^2,
+%   0.75 m/s and the peak acceleration about 0.5 m/s^2,
 %   far gentler than the 3.1 m/s^2 of version 1.
 %
 %   Outputs (sampled at dt = 0.01 s):
@@ -73,9 +93,9 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   Only base MATLAB is used (no toolboxes).
 
 % ---- Parameters ----
-V_HOP  = 0.5;   % average speed used to set hop times (m/s)
+V_HOP  = 0.4;   % average speed used to set hop times (m/s)
 T_MIN  = 2.0;   % minimum hop duration (s)
-DWELL  = 5.0;   % hold time at each gate (s)
+DWELL  = 12.0;  % hold time at each gate (s)
 MAX_HOP = 1.2;  % longest allowed cruise hop (m); longer hops are split
 T_TAKE = 2.0;   % take-off duration (s)
 T_LAND = 2.5;   % landing duration (s)
@@ -195,7 +215,7 @@ traj(end, :) = E(end, :);
 traj_vel(end, :) = 0;
 traj_acc(end, :) = 0;
 
-fprintf('Motion planning (hop and dwell v3): %d waypoints, %d segments, total time = %.2f s\n', ...
+fprintf('Motion planning (hop and dwell v4): %d waypoints, %d segments, total time = %.2f s\n', ...
     n, n_seg, t_total);
 fprintf('  max speed = %.2f m/s, max acceleration = %.2f m/s^2\n', ...
     max(sqrt(sum(traj_vel.^2, 2))), max(sqrt(sum(traj_acc.^2, 2))));
