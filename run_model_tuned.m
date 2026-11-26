@@ -1,47 +1,36 @@
 %---------- IDAT7213 Final Project -----------
-%---------- Tuned controller gains -----------
+%---------- Controller gains: REVERTED TO THE SUPPLIED VALUES -----
 %---------- Based on the supplied run_model.m (Peng Lu) -----
 %
 %   Run this file (not the original run_model.m) before running
-%   quadrotor_sim.slx.  It loads the tuned gains below into the
-%   base workspace as Simulink.Parameter objects, exactly as the
+%   quadrotor_sim.slx.  It loads the gains below into the base
+%   workspace as Simulink.Parameter objects, exactly as the
 %   original file does.
 %
-%   Tuning rationale
-%   ----------------
-%   The supplied gains are a safe, slow starting point.  In
-%   particular KP_y (0.25) is only half of KP_x (0.5) and
-%   KP_vy (1) is only half of KP_vx (2), so the drone lags badly
-%   in y -- the direction of most of the racing legs.  The tuned
-%   gains make x and y symmetric, raise the position and velocity
-%   loops by about a factor of 2, and raise the attitude loop by
-%   about a factor of 1.8, while raising the D gains at the same
-%   time so that the damping ratio of each loop stays roughly
-%   the same as before (no loop is tuned by P alone).
+%   WHY THE GAINS ARE THE ORIGINAL ONES
+%   -----------------------------------
+%   A first, tuned set of gains (position x/y 1.0/1.2, velocity
+%   2.5/0.8, attitude 1.8/1.4, rate 2.5/1.2) was tried in a real
+%   Simulink run on GitHub Actions (2026-11-26, MATLAB latest,
+%   Windows runner).  The planning and motion-planning results
+%   were exactly as designed (planning time 0.0696 s, trajectory
+%   17.34 s, max speed 1.41 m/s, max acceleration 3.13 m/s^2),
+%   but the closed loop went UNSTABLE: the drone diverged to
+%   x = +40 m, y = +47 m, z = -3000 m over the 30 s simulation,
+%   passing 0/5 gates and never landing.  A point-mass surrogate
+%   model had predicted the tuned gains would track better; the
+%   real four-loop cascade with the fixed-step solver evidently
+%   has much less phase margin than that surrogate, so the
+%   increase in loop gain destabilised it.
 %
-%   Original -> tuned:
-%     position:  KP_x 0.5 -> 1.0,  KD_x 0.5 -> 1.2
-%                KP_y 0.25 -> 1.0, KD_y 0.5 -> 1.2
-%                KP_z 1.0 -> 1.5,  KD_z 1.5 -> 2.0
-%     velocity:  KP_vx 2 -> 2.5,   KD_vx 0.5 -> 0.8
-%                KP_vy 1 -> 2.5,   KD_vy 1 -> 0.8
-%                KP_vz 8 -> 10,    KD_vz 3 -> 4
-%     attitude:  KP_phi/theta 1 -> 1.8, KD 1 -> 1.4
-%                KP_psi 1 -> 1.2,  KD_psi 1 -> 1.0
-%     rate:      KP_p/q/r 2 -> 2.5, KD 1 -> 1.2
-%
-%   Why this is safe: the speed of the flight comes mainly from
-%   the planned trajectory (max. speed about 1.4 m/s, max.
-%   acceleration about 3.1 m/s^2), not from the gains.  The gains
-%   only have to follow that trajectory.  In an equivalent
-%   point-mass model of the same cascade, the original gains gave
-%   a maximum tracking error of about 0.44 m and a closest
-%   approach to an obstacle of only 0.14 m; the tuned gains gave
-%   about 0.16 m maximum error and 0.31 m closest approach.
-%   If the Simulink run ever shows overshoot or oscillation,
-%   halve the step from the original gains (for example
-%   KP_x = 0.75, KP_vx = 2.25) and re-run; do not increase the
-%   gains further.
+%   The gains below are therefore the SUPPLIED gains, unchanged.
+%   They are known to be stable (the teacher's demo flies with
+%   them).  The speed of this flight comes from the planned
+%   trajectory, not from the gains.  If tracking with these
+%   gains proves too loose (a gate missed by a small margin),
+%   the safe next step is a SMALL change only -- for example
+%   making y match x (KP_y 0.25 -> 0.5, KP_vy 1 -> 2) -- and
+%   re-running; do not jump back to the destabilising set.
 
 clear all
 clc
@@ -107,44 +96,44 @@ KD_r.RTWInfo.StorageClass = 'SimulinkGlobal';
 
 %-------------------- controller gains start --------------------
 % ------------ position ------------
-KP_x.Value = 1.0;
-KD_x.Value = 1.2;
+KP_x.Value = 0.5;
+KD_x.Value = 0.5;
 
-KP_y.Value = 1.0;
-KD_y.Value = 1.2;
+KP_y.Value = 0.25;
+KD_y.Value = 0.5;
 
-KP_z.Value = 1.5;
-KD_z.Value = 2.0;
+KP_z.Value = 1;
+KD_z.Value = 1.5;
 
 % ------------ velocity ------------
-KP_vx.Value = 2.5;
-KD_vx.Value = 0.8;
+KP_vx.Value = 2;
+KD_vx.Value = 0.5;
 
-KP_vy.Value = 2.5;
-KD_vy.Value = 0.8;
+KP_vy.Value = 1;
+KD_vy.Value = 1;
 
-KP_vz.Value = 10;
-KD_vz.Value = 4;
+KP_vz.Value = 8;
+KD_vz.Value = 3;
 
 % ------------ angular position ------------
-KP_phi.Value = 1.8;
-KD_phi.Value = 1.4;
+KP_phi.Value = 1;
+KD_phi.Value = 1;
 
-KP_theta.Value = 1.8;
-KD_theta.Value = 1.4;
+KP_theta.Value = 1;
+KD_theta.Value = 1;
 
-KP_psi.Value = 1.2;
-KD_psi.Value = 1.0;
+KP_psi.Value = 1;
+KD_psi.Value = 1;
 
 % ------------ angular rate ------------
-KP_p.Value = 2.5;
-KD_p.Value = 1.2;
+KP_p.Value = 2;
+KD_p.Value = 1;
 
-KP_q.Value = 2.5;
-KD_q.Value = 1.2;
+KP_q.Value = 2;
+KD_q.Value = 1;
 
-KP_r.Value = 2.5;
-KD_r.Value = 1.2;
+KP_r.Value = 2;
+KD_r.Value = 1;
 
 %-------------------- controller gains end --------------------
-fprintf('Tuned controller gains loaded (run_model_tuned.m).\n');
+fprintf('Controller gains loaded (supplied values, run_model_tuned.m).\n');
