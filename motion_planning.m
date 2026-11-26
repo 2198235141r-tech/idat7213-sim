@@ -3,7 +3,7 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 27 -- STEP commands, like the supplied demo, plus every long return step split):
+%   Method (version 28 -- STEP commands, like the supplied demo, plus every long return step split and the return detour shifted west of Red 5):
 %   the desired position is PIECEWISE CONSTANT.  It JUMPS
 %   instantly from one waypoint to the next (a step) and then
 %   HOLDS there while the drone flies to it and settles.  This
@@ -77,7 +77,7 @@ end
 W = [W; 0, 0, 0.5;     % above the origin, before landing
      0, 0, 0];         % ground, finish
 
-% ---- Split every long return step (version 27) ----
+% ---- Split every long return step (version 27) + shift detour west (version 28) ----
 % The return leg has two ~2 m steps that each excite a
 % ~0.8 m swing onto Red 5 (x = 2): Gate 2 (4,0) -> first
 % return detour, and the last return detour (1.7,-1.0) ->
@@ -106,6 +106,26 @@ if g2 > 0
         Wnew = [Wnew; b]; %#ok<AGROW>
     end
     W = Wnew;
+end
+
+% ---- Shift the return detour west of Red 5 (version 28) ----
+% Runs #33 and #34 both touched Red 5 at the IDENTICAL
+% point (2.000, -0.117) at t = 80.82 s, proving the touch
+% is the peak of the ~0.9 m north-east swing centred on
+% the return detour (1.7, -1.0): the swing lands on x = 2.
+% The (2.2, -1.0) detour is safe (its swing goes east of
+% Red 5), so only the detour with 1.5 < x < 2.0 south of
+% Red 5 is moved west to x = 1.0; its swing then lands at
+% about (1.3, -0.1), west of Red 5.  This is a
+% motion-planning keep-clear adjustment for the
+% controller's ringing, not a change to the A* path.
+if g2 > 0
+    for i = (g2 + 1):size(W, 1)
+        if W(i, 1) > 1.5 && W(i, 1) < 2.0 && W(i, 2) < -0.5 && abs(W(i, 3) - 0.5) < 1e-9
+            fprintf('  return-detour shift: (%.2f, %.2f) moved west to (1.00, %.2f) to keep the swing off Red 5\n', W(i, 1), W(i, 2), W(i, 2));
+            W(i, 1) = 1.0;
+        end
+    end
 end
 n = size(W, 1);
 
