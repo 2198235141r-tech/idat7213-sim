@@ -97,10 +97,10 @@ KD_r.RTWInfo.StorageClass = 'SimulinkGlobal';
 %-------------------- controller gains start --------------------
 % ------------ position ------------
 KP_x.Value = 0.5;
-KD_x.Value = 1.0;
+KD_x.Value = 1.5;
 
 KP_y.Value = 0.25;
-KD_y.Value = 1.0;
+KD_y.Value = 1.5;
 
 KP_z.Value = 1;
 KD_z.Value = 1.5;
