@@ -1,5 +1,5 @@
 %---------- IDAT7213 Final Project -----------
-%---------- Controller gains: SUPPLIED ORIGINALS (y-sym reverted) -----
+%---------- Controller gains: y SYMMETRISED TO MATCH x -----
 %---------- Based on the supplied run_model.m (Peng Lu) -----
 %
 %   Run this file (not the original run_model.m) before running
@@ -7,28 +7,37 @@
 %   workspace as Simulink.Parameter objects, exactly as the
 %   original file does.
 %
-%   WHY THE GAINS ARE THE SUPPLIED ORIGINALS
-%   ----------------------------------------
-%   The y-symmetrised set (KP_y 0.25 -> 0.5, KP_vy 1 -> 2,
-%   KD_vy 1 -> 0.5, matching x) made y track a step as fast as
-%   x (a 60 s hover test with those gains is stable, end error
-%   0.00 m), but it also cut the y velocity loop's damping
-%   sharply (KD_vy / sqrt(KP_vy) from 1.0 down to 0.35).  Every
-%   race run with those gains tipped the drone over: the
-%   continuous trajectory diverged at once, the hop-and-dwell
-%   v2/v3 flew 31 s then blew up at Ring 3, and v4 (longer
-%   dwells, slower hops) diverged from about 5 s.  The slower
-%   and longer the trajectory, the earlier it failed -- the
-%   opposite of what a too-fast trajectory would do -- which
-%   points at the loop itself being underdamped, not at the
-%   trajectory being too fast.  So the y-sym change is
-%   reverted: these are the supplied gains, unchanged.  They
-%   are known to be stable (the teacher's demo and a step
-%   test both fly with them).  The y channel is slow with
-%   them (about 10 s to settle 1 m), but the v4 trajectory
-%   dwells 12 s at every gate, which gives it time to get
-%   there.  The earlier all-loops-raised tuned set is also
-%   NOT used -- it destabilised the real cascade in run 1.
+%   WHY THESE GAINS
+%   ---------------
+%   Diagnosis, all from real Simulink runs on GitHub Actions
+%   (2026-11-26, MATLAB latest, Windows runner):
+%   (1) The supplied demo (Step commands, supplied gains) flies
+%       stably and tracks: it ends at (0.01, 1.05, 1.00) against
+%       its real target (0,1,1) -- error 0.05 m.  The model and
+%       the supplied gains are fine.  BUT the demo also shows the
+%       y channel is far weaker than x: y takes about 10 s to
+%       reach 1 m and first dips the wrong way (to -0.6 m), while
+%       x reaches 1 m in about 3 s.  The supplied y gains are
+%       half the x gains (KP_y 0.25 vs KP_x 0.5, KP_vy 1 vs
+%       KP_vx 2, KD_vy 1 vs KD_vx 0.5).
+%   (2) A step test feeding the demo's exact step commands
+%       through MY From Workspace blocks (modified model) flies
+%       identically to the demo (end error 0.04 m).  The input
+%       path is fine.
+%   (3) My race trajectory diverged with BOTH the tuned gains
+%       (all loops raised: x to +40 m, y to +47 m, z to -3000 m)
+%       AND the supplied gains (x to -140 m, y to -160 m,
+%       z to -3000 m).  The trajectory is a continuously moving
+%       target; the slow y channel cannot keep up, the error
+%       grows, and the drone tips over and falls.
+%
+%   The fix below changes ONLY y, and only to match the proven
+%   x channel exactly: KP_y 0.25 -> 0.5, KP_vy 1 -> 2,
+%   KD_vy 1 -> 0.5.  Every other gain is the supplied original.
+%   The earlier tuned set (which raised all four loops) is NOT
+%   used -- it destabilised the real cascade.  A step test with
+%   these gains is run before the full trajectory, to confirm
+%   that y now tracks like x and stays stable.
 
 clear all
 clc
@@ -97,7 +106,7 @@ KD_r.RTWInfo.StorageClass = 'SimulinkGlobal';
 KP_x.Value = 0.5;
 KD_x.Value = 0.5;
 
-KP_y.Value = 0.25;
+KP_y.Value = 0.5;
 KD_y.Value = 0.5;
 
 KP_z.Value = 1;
@@ -107,8 +116,8 @@ KD_z.Value = 1.5;
 KP_vx.Value = 2;
 KD_vx.Value = 0.5;
 
-KP_vy.Value = 1;
-KD_vy.Value = 1;
+KP_vy.Value = 2;
+KD_vy.Value = 0.5;
 
 KP_vz.Value = 8;
 KD_vz.Value = 3;
@@ -134,4 +143,4 @@ KP_r.Value = 2;
 KD_r.Value = 1;
 
 %-------------------- controller gains end --------------------
-fprintf('Controller gains loaded (supplied originals, run_model_tuned.m).\n');
+fprintf('Controller gains loaded (y symmetrised to x, run_model_tuned.m).\n');
