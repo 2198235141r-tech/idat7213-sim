@@ -3,7 +3,7 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 29 -- STEP commands, like the supplied demo, plus every long return step split, the return detour shifted west of Red 5, and a 15 s settle hold before Gate 2):
+%   Method (version 30 -- STEP commands, like the supplied demo, plus both return detours shifted west of Red 5, every long return step split, and a 15 s settle hold before Gate 2):
 %   the desired position is PIECEWISE CONSTANT.  It JUMPS
 %   instantly from one waypoint to the next (a step) and then
 %   HOLDS there while the drone flies to it and settles.  This
@@ -78,21 +78,44 @@ end
 W = [W; 0, 0, 0.5;     % above the origin, before landing
      0, 0, 0];         % ground, finish
 
-% ---- Split every long return step (version 27) + shift detour west (version 28) ----
-% The return leg has two ~2 m steps that each excite a
-% ~0.8 m swing onto Red 5 (x = 2): Gate 2 (4,0) -> first
-% return detour, and the last return detour (1.7,-1.0) ->
-% origin (0,0).  All gates are already passed by then, so
-% splitting these steps cannot break the gate order.
-% Every step after Gate 2 longer than 1.5 m gets its
-% midpoint inserted as an extra detour hold (5 s).
+% ---- Shift the return detours west of Red 5 (version 30) ----
+% Run #36 cleared the Red 4 Gate 2 graze (settle hold
+% worked) but the touch moved back to Red 5's TIP at
+% (2.000, -0.477): the (2.2, -1.0) detour's swing grazes
+% the tip.  The v28 rule only moved waypoints with
+% 1.5 < x < 2.0, so (2.2, -1.0) was left alone.  Now EVERY
+% return-leg waypoint with 1.5 <= x <= 2.5 south of Red 5
+% (y < -0.5) is shifted west by 0.7 m: (2.2, -1.0) becomes
+% (1.5, -1.0) and (1.7, -1.0) becomes (1.0, -1.0).  Both
+% swings then land west of Red 5.  The shift is done
+% BEFORE the split below, so the split midpoints are
+% computed from the shifted positions.  This is a
+% motion-planning keep-clear adjustment for the
+% controller's ringing, not a change to the A* path.
 MAX_RET_STEP = 1.5;
+SHIFT_WEST = 0.7;
 g2 = 0;
 for i = 1:size(W, 1)
     if abs(W(i, 1) - 4.0) < 1e-9 && abs(W(i, 2) - 0.0) < 1e-9 && abs(W(i, 3) - 0.5) < 1e-9
         g2 = i;
     end
 end
+if g2 > 0
+    for i = (g2 + 1):size(W, 1)
+        if W(i, 1) >= 1.5 && W(i, 1) <= 2.5 && W(i, 2) < -0.5 && abs(W(i, 3) - 0.5) < 1e-9
+            fprintf('  return-detour shift: (%.2f, %.2f) moved west to (%.2f, %.2f) to keep the swing off Red 5\n', W(i, 1), W(i, 2), W(i, 1) - SHIFT_WEST, W(i, 2));
+            W(i, 1) = W(i, 1) - SHIFT_WEST;
+        end
+    end
+end
+
+% ---- Split every long return step (version 27) ----
+% The return leg has ~2 m steps that each excite a
+% ~0.8 m swing onto Red 5 (x = 2).  All gates are already
+% passed by then, so splitting these steps cannot break
+% the gate order.  Every step after Gate 2 longer than
+% 1.5 m gets its midpoint inserted as an extra detour
+% hold (5 s).
 if g2 > 0
     Wnew = W(1:g2, :);
     for i = (g2 + 1):size(W, 1)
@@ -107,26 +130,6 @@ if g2 > 0
         Wnew = [Wnew; b]; %#ok<AGROW>
     end
     W = Wnew;
-end
-
-% ---- Shift the return detour west of Red 5 (version 28) ----
-% Runs #33 and #34 both touched Red 5 at the IDENTICAL
-% point (2.000, -0.117) at t = 80.82 s, proving the touch
-% is the peak of the ~0.9 m north-east swing centred on
-% the return detour (1.7, -1.0): the swing lands on x = 2.
-% The (2.2, -1.0) detour is safe (its swing goes east of
-% Red 5), so only the detour with 1.5 < x < 2.0 south of
-% Red 5 is moved west to x = 1.0; its swing then lands at
-% about (1.3, -0.1), west of Red 5.  This is a
-% motion-planning keep-clear adjustment for the
-% controller's ringing, not a change to the A* path.
-if g2 > 0
-    for i = (g2 + 1):size(W, 1)
-        if W(i, 1) > 1.5 && W(i, 1) < 2.0 && W(i, 2) < -0.5 && abs(W(i, 3) - 0.5) < 1e-9
-            fprintf('  return-detour shift: (%.2f, %.2f) moved west to (1.00, %.2f) to keep the swing off Red 5\n', W(i, 1), W(i, 2), W(i, 2));
-            W(i, 1) = 1.0;
-        end
-    end
 end
 n = size(W, 1);
 
