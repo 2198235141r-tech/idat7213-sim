@@ -1,0 +1,31 @@
+name: Run IDAT7213 step test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run-step:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up MATLAB and Simulink
+        uses: matlab-actions/setup-matlab@v3
+        with:
+          products: MATLAB Simulink
+
+      - name: Run the step test
+        uses: matlab-actions/run-command@v3
+        with:
+          command: step_test
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: step-results
+          path: |
+            step_results.txt
+            step_plot.png
+            step_top_view.png
+          if-no-files-found: error
