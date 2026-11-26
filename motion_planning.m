@@ -3,7 +3,7 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 11 -- STEP commands, like the supplied demo):
+%   Method (version 26 -- STEP commands, like the supplied demo, plus a return-leg split):
 %   the desired position is PIECEWISE CONSTANT.  It JUMPS
 %   instantly from one waypoint to the next (a step) and then
 %   HOLDS there while the drone flies to it and settles.  This
@@ -76,6 +76,29 @@ for k = 2:(size(waypoints_xy, 1) - 1)
 end
 W = [W; 0, 0, 0.5;     % above the origin, before landing
      0, 0, 0];         % ground, finish
+
+% ---- Split the long return step (version 26) ----
+% The step from Gate 2 (4,0) to the first return detour is
+% about 2 m long and excites a ~0.8 m northward swing that
+% hits Red 5 (x = 2).  All gates are already passed by then,
+% so splitting this one step cannot break the gate order.
+% If that step is longer than 1.5 m, insert its midpoint
+% (a detour hold) between Gate 2 and the return detour.
+MAX_RET_STEP = 1.5;
+g2 = 0;
+for i = 1:size(W, 1)
+    if abs(W(i, 1) - 4.0) < 1e-9 && abs(W(i, 2) - 0.0) < 1e-9 && abs(W(i, 3) - 0.5) < 1e-9
+        g2 = i;
+    end
+end
+if g2 > 0 && g2 < size(W, 1)
+    d = hypot(W(g2 + 1, 1) - W(g2, 1), W(g2 + 1, 2) - W(g2, 2));
+    if d > MAX_RET_STEP
+        mid = 0.5 * (W(g2, :) + W(g2 + 1, :));
+        W = [W(1:g2, :); mid; W(g2 + 1:end, :)];
+        fprintf('  return-leg split: Gate 2 -> return detour %.2f m split at (%.2f, %.2f)\n', d, mid(1), mid(2));
+    end
+end
 n = size(W, 1);
 
 % ---- Which waypoints are gates (for the hold time) ----
