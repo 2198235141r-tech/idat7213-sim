@@ -3,7 +3,7 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 28 -- STEP commands, like the supplied demo, plus every long return step split and the return detour shifted west of Red 5):
+%   Method (version 29 -- STEP commands, like the supplied demo, plus every long return step split, the return detour shifted west of Red 5, and a 15 s settle hold before Gate 2):
 %   the desired position is PIECEWISE CONSTANT.  It JUMPS
 %   instantly from one waypoint to the next (a step) and then
 %   HOLDS there while the drone flies to it and settles.  This
@@ -63,6 +63,7 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 % ---- Parameters ----
 HOLD_GATE   = 8.0;  % hold time at each gate (s)
 HOLD_DETOUR = 5.0;  % hold time at each detour waypoint (s)
+HOLD_SETTLE = 15.0; % long settle hold at the detour just before Gate 2 (s)
 HOLD_TAKE   = 2.0;  % hold time at the top of take-off (s)
 HOLD_HOME   = 5.0;  % hold time above the origin before landing (s)
 DT          = 0.01; % sampling period (s)
@@ -155,6 +156,19 @@ for i = 3:(n - 2)
     else
         hold(i) = HOLD_DETOUR;
     end
+end
+% ---- Long settle before Gate 2 (version 29) ----
+% Run #35 cleared Red 5 but grazed Red 4 by 0.001 m at
+% Gate 2: the drone at Gate 2 (4,0) swings north to
+% y = 0.501, just past Red 4's y = 0.5 line.  The swing
+% is the residual y-oscillation from the leg-5 detour
+% steps.  Give the detour just before Gate 2 (4.7, 0.0)
+% a long 15 s settle hold so the oscillation decays
+% before the step into Gate 2, keeping the northward
+% swing well under 0.5 m.
+if g2 > 3
+    hold(g2 - 1) = HOLD_SETTLE;
+    fprintf('  settle hold: waypoint before Gate 2 (%.2f, %.2f) held %.0f s\n', W(g2 - 1, 1), W(g2 - 1, 2), HOLD_SETTLE);
 end
 hold(n - 1) = HOLD_HOME; % above the origin before landing
 hold(n) = 2.0;           % on the ground at the end
