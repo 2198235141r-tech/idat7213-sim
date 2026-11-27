@@ -3,14 +3,16 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 36 -- push faster from the clean v35.  Run #45
-%   (v35) passed clean in 79.20 s with 0.115 m clearance, the
-%   best yet.  The cuts: gate holds 5 s -> 4 s (Ring 3 is the
-%   tightest pass at 0.302 m, so 4 s should still leave it
-%   inside 0.5 m) and the settle 15 s -> 14 s (12 s failed
-%   at 0.000 m and 15 s gave 0.115 m, so 14 s should land
-%   around 0.07-0.08 m).  Detours stay at 2 s, tip detours
-%   at 5 s.  Expected trajectory about 62 s):
+%   Method (version 37 -- gate holds back to 5 s, settle stays
+%   at 14 s.  Run #46 (v36) was a double failure: only 2/5
+%   gates (Ring 2 missed at 0.630 m, outside the 0.5 m ring)
+%   AND a Red 5 collision at t = 16.24 s in the Ring 2
+%   corridor.  The 4 s gate holds were too short: the drone
+%   arrived at the (1.4, 1.1) detour still swinging from
+%   Gate 1 and the 2 s detour hold could not damp it.  So the
+%   gate holds go back to 5 s; the only remaining question
+%   is whether the 14 s settle is safe, which v37 tests.
+%   Expected trajectory about 67 s):
 %   the desired position is PIECEWISE CONSTANT.  It JUMPS
 %   instantly from one waypoint to the next (a step) and then
 %   HOLDS there while the drone flies to it and settles.  This
@@ -46,10 +48,13 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   clean but slow (trajectory 99 s, flight 110.58 s).  Version
 %   35 (gate 5 s, other detours 2 s, leg-5 tip detours 5 s,
 %   settle 15 s) passed clean in 79.20 s with 0.115 m
-%   clearance, the best yet.  Version 36 cuts the gate holds
-%   to 4 s and the settle to 14 s.  If v36 grazes Red 4, the
-%   settle goes back to 15 s; if it misses Ring 3, the gate
-%   holds go back to 5 s.  Either way v35 stays the fallback.
+%   clearance, the best yet.  Version 36 cut the gate holds
+%   to 4 s and the settle to 14 s, and failed twice over:
+%   Ring 2 missed (0.630 m) and Red 5 touched at t = 16.24 s.
+%   Version 37 restores the gate holds to 5 s and keeps the
+%   settle at 14 s.  If v37 passes clean, the settle is safe
+%   at 14 s and v37 becomes the best; if it grazes Red 4,
+%   the settle goes back to 15 s and v35 stays the best.
 %
 %   NOTE on velocity / acceleration: for a step input the
 %   commanded velocity is zero during every hold (the drone
@@ -70,7 +75,7 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   Only base MATLAB is used (no toolboxes).
 
 % ---- Parameters ----
-HOLD_GATE   = 4.0;  % hold time at each gate (s) -- v36: was 5.0
+HOLD_GATE   = 5.0;  % hold time at each gate (s) -- v37: restored from v36's 4.0 (run #46 missed Ring 2 at 0.630 m and touched Red 5 with 4 s holds)
 HOLD_DETOUR = 2.0;  % hold time at each detour waypoint (s) -- v34: was 3.0 (tip detours stay at 5.0)
 HOLD_DETOUR_TIP = 5.0; % hold time at the leg-5 tip detours (Ring 3 -> Gate 2) -- v33: restored to 5.0, unchanged in v36
 HOLD_SETTLE = 14.0; % long settle hold at the detour just before Gate 2 (s) -- v36: was 15.0
@@ -214,6 +219,6 @@ end
 % The final sample is exactly the final waypoint.
 traj(end, :) = W(n, :);
 
-fprintf('Motion planning (step commands v36): %d waypoints, total time = %.2f s\n', n, t_total);
+fprintf('Motion planning (step commands v37): %d waypoints, total time = %.2f s\n', n, t_total);
 fprintf('  holds: gate %.0f s, detour %.0f s, leg-5 tip detour %.0f s; commanded velocity is zero during holds (step input, as in the supplied demo)\n', HOLD_GATE, HOLD_DETOUR, HOLD_DETOUR_TIP);
 end
