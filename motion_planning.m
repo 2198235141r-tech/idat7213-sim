@@ -3,23 +3,19 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 39 -- split the final step home.  Run #47
-%   (v37) passed clean in 78.20 s with 0.096 m clearance, the
-%   best yet, and run #48 (v38, a z staircase after Gate 2)
-%   was clean but no faster (78.27 s): the 11.2 s landing gap
-%   is the x/y ringing decaying, not the z undershoot.  The
-%   gap is set by the last step, (1.0, -1.0) -> (0, 0), which
-%   is 1.41 m -- just under the 1.5 m split threshold, so it
-%   was never split.  The drone lands with the swing from
-%   that step and needs ~11 s for it to decay below 0.1 m.
-%   Version 39 splits that final step at its midpoint
-%   (0.5, -0.5) with a 2 s hold, so the last two steps are
-%   0.71 m each and the landing swing is roughly halved.
-%   The midpoint is far from every obstacle, and all gates
-%   are already passed, so it cannot break a gate or cause
-%   a collision.  Holds are otherwise unchanged (gate 5 s,
-%   detour 2 s, tip 5 s, settle 14 s).  Expected trajectory
-%   about 69 s, flight about 76 s):
+%   Method (version 40 -- leg-5 tip detours cut 5 s -> 4 s,
+%   everything else as v37 (gate 5 s, other detours 2 s,
+%   settle 14 s).  Run #49 (v39) proved the final-step split
+%   backfires (87.17 s: the two quick steps pump the swing,
+%   y rebounded to +1.6 m), so the split is reverted and v37
+%   (78.20 s, 0.096 m) is the best clean result.  The tip
+%   detours are the last untested cut: v33/v35/v37 at 5 s are
+%   clean (0.096-0.115 m), v32 at 3 s grazed Red 4 (0.000 m),
+%   so 4 s should land near 0.05 m -- a coin flip on the
+%   checker.  If v40 passes clean it saves 3 s of trajectory
+%   (about 64 s, flight about 75 s) and becomes the best;
+%   if it grazes, v37 stands as the final version.
+%   Expected trajectory about 64 s):
 %   the desired position is PIECEWISE CONSTANT.  It JUMPS
 %   instantly from one waypoint to the next (a step) and then
 %   HOLDS there while the drone flies to it and settles.  This
@@ -53,15 +49,19 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   to get within 0.15 m and a 2 m step about 7 s.  Version 30
 %   held each gate for 8 s and each detour for 5 s, which flew
 %   clean but slow (trajectory 99 s, flight 110.58 s).  Version
-%   37 (gate 5 s, other detours 2 s, leg-5 tip detours 5 s,
-%   settle 14 s) passed clean in 78.20 s with 0.096 m
-%   clearance, the best yet.  Version 38 tried a z staircase
-%   after Gate 2 and was clean but no faster (78.27 s), so
-%   the landing gap is the x/y ringing, not z.  Version 39
-%   keeps every hold and only splits the final step home
-%   (1.0, -1.0) -> (0, 0) at (0.5, -0.5).  If v39 is clean
-%   and faster, it becomes the best; if the landing gap does
-%   not shrink, v37 stays the best.
+%   35 (gate 5 s, other detours 2 s, leg-5 tip detours 5 s,
+%   settle 15 s) passed clean in 79.20 s with 0.115 m
+%   clearance, the best yet.  Version 36 cut the gate holds
+%   to 4 s and the settle to 14 s, and failed twice over:
+%   Ring 2 missed (0.630 m) and Red 5 touched at t = 16.24 s.
+%   Version 37 restores the gate holds to 5 s and keeps the
+%   settle at 14 s.  It passed clean in 78.20 s with 0.096 m
+%   clearance (run #47) and is the best clean result.  Version
+%   38 added a z staircase after Gate 2 and was clean but no
+%   faster (78.27 s), and version 39 split the final step
+%   home and was clean but SLOWER (87.17 s) -- both ideas are
+%   disproved.  Version 40 cuts only the leg-5 tip detours
+%   from 5 s to 4 s.
 %
 %   NOTE on velocity / acceleration: for a step input the
 %   commanded velocity is zero during every hold (the drone
@@ -84,7 +84,7 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 % ---- Parameters ----
 HOLD_GATE   = 5.0;  % hold time at each gate (s) -- v37: restored from v36's 4.0 (run #46 missed Ring 2 at 0.630 m and touched Red 5 with 4 s holds)
 HOLD_DETOUR = 2.0;  % hold time at each detour waypoint (s) -- v34: was 3.0 (tip detours stay at 5.0)
-HOLD_DETOUR_TIP = 5.0; % hold time at the leg-5 tip detours (Ring 3 -> Gate 2) -- v33: restored to 5.0, unchanged in v36
+HOLD_DETOUR_TIP = 4.0; % hold time at the leg-5 tip detours (Ring 3 -> Gate 2) -- v40: cut from v37's 5.0 (v32 at 3.0 grazed Red 4; 4.0 is the last untested cut)
 HOLD_SETTLE = 14.0; % long settle hold at the detour just before Gate 2 (s) -- v36: was 15.0
 HOLD_TAKE   = 1.0;  % hold time at the top of take-off (s) -- v31: was 2.0
 HOLD_HOME   = 2.0;  % hold time above the origin before landing (s) -- v34: was 3.0
@@ -155,32 +155,6 @@ if g2 > 0
 end
 n = size(W, 1);
 
-% ---- Split the final step home (version 39) ----
-% The step from the last return detour (1.0, -1.0) to the
-% origin (0, 0) is 1.41 m, just under MAX_RET_STEP, so the
-% split above never touched it.  But it is the step that sets
-% the swing the drone lands with: the 11.2 s gap between the
-% trajectory end and the landing is the time for that swing
-% to decay below 0.1 m, and the gap was the same (11.2 s)
-% whether the return detours were held 2 s, 3 s or 5 s, so
-% it is set by this last step, not by the earlier holds.
-% Split it at its midpoint (0.5, -0.5) with a 2 s hold, so
-% the last two steps are 0.71 m each and the landing swing
-% is roughly halved.  The midpoint is far from every
-% obstacle (Red 5 is at x = 2, Red 3/4 at y = 0.5, x >= 2.5),
-% and all gates are already passed, so it cannot break a
-% gate or cause a collision.
-if n >= 3
-    a = W(n - 2, :); b = W(n - 1, :); % (1.0,-1.0,0.5) -> (0,0,0.5)
-    d = hypot(b(1) - a(1), b(2) - a(2));
-    if d > 1.0 && abs(b(3) - 0.5) < 1e-9
-        mid = 0.5 * (a + b);
-        W = [W(1:n - 2, :); mid; W(n - 1:n, :)];
-        n = size(W, 1);
-        fprintf('  final-step split: (%.2f, %.2f) -> (%.2f, %.2f) %.2f m split at (%.2f, %.2f)\n', a(1), a(2), b(1), b(2), d, mid(1), mid(2));
-    end
-end
-
 % ---- Which waypoints are gates (for the hold time) ----
 gate_xy = [0, 1; 0.5, 2; 2, 1; 4, 1; 4, 0];
 is_gate = false(n, 1);
@@ -213,7 +187,7 @@ for i = 3:(n - 2)
     if is_gate(i)
         hold(i) = HOLD_GATE;
     elseif r3 > 0 && g2 > 0 && i > r3 && i < g2
-        hold(i) = HOLD_DETOUR_TIP; % leg-5 tip detour (v33: 5 s, not 3 s)
+        hold(i) = HOLD_DETOUR_TIP; % leg-5 tip detour (v40: 4 s, cut from v37's 5 s)
     else
         hold(i) = HOLD_DETOUR;
     end
@@ -252,6 +226,6 @@ end
 % The final sample is exactly the final waypoint.
 traj(end, :) = W(n, :);
 
-fprintf('Motion planning (step commands v39): %d waypoints, total time = %.2f s\n', n, t_total);
+fprintf('Motion planning (step commands v40): %d waypoints, total time = %.2f s\n', n, t_total);
 fprintf('  holds: gate %.0f s, detour %.0f s, leg-5 tip detour %.0f s; commanded velocity is zero during holds (step input, as in the supplied demo)\n', HOLD_GATE, HOLD_DETOUR, HOLD_DETOUR_TIP);
 end
