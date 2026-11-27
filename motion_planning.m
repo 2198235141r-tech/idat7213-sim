@@ -3,14 +3,17 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 32 -- v31's fast holds, but the Gate 2 settle
-%   restored to 15 s.  Run #39 (v31) flew much faster -- flight
-%   73.15 s instead of 110.58 s -- but grazed Red 4 by 0.002 m
-%   at (4.149, 0.502) during the Gate 2 hold: the 10 s settle
-%   let the residual y-oscillation reach y = 0.502, just past
-%   Red 4's y = 0.5 line.  The fast gate (5 s) and detour (3 s)
-%   holds caused no touch anywhere else, so only the settle
-%   goes back to 15 s.  Expected trajectory about 67 s):
+%   Method (version 33 -- leg-5 tip detours back to 5 s.  Run #41
+%   (v32) still touched Red 4 by 0.000 m at Gate 2 even with
+%   the settle restored to 15 s: going from settle 10 s (v31)
+%   to 15 s (v32) only moved the graze from 0.002 m past the
+%   line to exactly on it, so the settle decay is too slow to
+%   be the fix.  The residual y-oscillation is pumped by the
+%   fast 3 s detour holds in the leg-5 tip rounding (and the
+%   5 s Ring 3 gate hold), so the three tip detours between
+%   Ring 3 and Gate 2 get HOLD_DETOUR_TIP = 5 s again; the
+%   other detours stay at 3 s, gates stay at 5 s, settle
+%   stays at 15 s.  Expected trajectory about 73 s):
 %   the desired position is PIECEWISE CONSTANT.  It JUMPS
 %   instantly from one waypoint to the next (a step) and then
 %   HOLDS there while the drone flies to it and settles.  This
@@ -44,15 +47,15 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   to get within 0.15 m and a 2 m step about 7 s.  Version 30
 %   held each gate for 8 s and each detour for 5 s, which flew
 %   clean but slow (trajectory 99 s, flight 110.58 s).  Version
-%   31 cut the holds -- gate 5 s, detour 3 s, settle 10 s --
-%   and flew in 73.15 s but grazed Red 4 by 0.002 m at Gate 2,
-%   because 10 s of settle was not enough for the residual
-%   y-oscillation to decay below Red 4's y = 0.5 line.
-%   Version 32 keeps the fast gate and detour holds and
-%   restores only the settle to 15 s, the value that kept
-%   Gate 2 clean in v30 (closest 0.090 m).  If v32 still
-%   grazes, the settle goes longer still; the gate and
-%   detour holds are not the problem.
+%   31 cut everything (gate 5 s, detour 3 s, settle 10 s) and
+%   flew in 73.15 s but grazed Red 4 by 0.002 m at Gate 2.
+%   Version 32 restored only the settle to 15 s and still
+%   touched Red 4 by 0.000 m: 5 s more settle only bought
+%   0.002 m, so the oscillation is pumped, not under-decayed.
+%   Version 33 restores the three leg-5 tip detours (between
+%   Ring 3 and Gate 2, the ones that pump the swing into
+%   Gate 2) to 5 s and keeps the other detours at 3 s.  If
+%   v33 still touches, all detours go back to 5 s (v34).
 %
 %   NOTE on velocity / acceleration: for a step input the
 %   commanded velocity is zero during every hold (the drone
@@ -75,7 +78,8 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 % ---- Parameters ----
 HOLD_GATE   = 5.0;  % hold time at each gate (s) -- v31: was 8.0
 HOLD_DETOUR = 3.0;  % hold time at each detour waypoint (s) -- v31: was 5.0
-HOLD_SETTLE = 15.0; % long settle hold at the detour just before Gate 2 (s) -- v32: restored from v31's 10.0 (run #39 grazed Red 4 by 0.002 m with 10 s)
+HOLD_DETOUR_TIP = 5.0; % hold time at the leg-5 tip detours (Ring 3 -> Gate 2) -- v33: restored to 5.0, the others stay at 3.0
+HOLD_SETTLE = 15.0; % long settle hold at the detour just before Gate 2 (s) -- v32: restored from v31's 10.0
 HOLD_TAKE   = 1.0;  % hold time at the top of take-off (s) -- v31: was 2.0
 HOLD_HOME   = 3.0;  % hold time above the origin before landing (s) -- v31: was 5.0
 DT          = 0.01; % sampling period (s)
@@ -155,6 +159,14 @@ for i = 1:n
         end
     end
 end
+% Index of Ring 3 (4, 1): the leg-5 tip detours are the
+% non-gate waypoints strictly between Ring 3 and Gate 2.
+r3 = 0;
+for i = 1:n
+    if abs(W(i, 1) - 4.0) < 1e-9 && abs(W(i, 2) - 1.0) < 1e-9 && abs(W(i, 3) - 0.5) < 1e-9
+        r3 = i;
+    end
+end
 
 % ---- Hold durations ----
 % The trajectory starts at W(1,:) at t = 0 (take-off is the
@@ -168,6 +180,8 @@ hold(2) = HOLD_TAKE;    % top of take-off
 for i = 3:(n - 2)
     if is_gate(i)
         hold(i) = HOLD_GATE;
+    elseif r3 > 0 && g2 > 0 && i > r3 && i < g2
+        hold(i) = HOLD_DETOUR_TIP; % leg-5 tip detour (v33: 5 s, not 3 s)
     else
         hold(i) = HOLD_DETOUR;
     end
@@ -206,6 +220,6 @@ end
 % The final sample is exactly the final waypoint.
 traj(end, :) = W(n, :);
 
-fprintf('Motion planning (step commands v32): %d waypoints, total time = %.2f s\n', n, t_total);
-fprintf('  holds: gate %.0f s, detour %.0f s; commanded velocity is zero during holds (step input, as in the supplied demo)\n', HOLD_GATE, HOLD_DETOUR);
+fprintf('Motion planning (step commands v33): %d waypoints, total time = %.2f s\n', n, t_total);
+fprintf('  holds: gate %.0f s, detour %.0f s, leg-5 tip detour %.0f s; commanded velocity is zero during holds (step input, as in the supplied demo)\n', HOLD_GATE, HOLD_DETOUR, HOLD_DETOUR_TIP);
 end
