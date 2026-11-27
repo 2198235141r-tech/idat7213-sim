@@ -3,17 +3,14 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 33 -- leg-5 tip detours back to 5 s.  Run #41
-%   (v32) still touched Red 4 by 0.000 m at Gate 2 even with
-%   the settle restored to 15 s: going from settle 10 s (v31)
-%   to 15 s (v32) only moved the graze from 0.002 m past the
-%   line to exactly on it, so the settle decay is too slow to
-%   be the fix.  The residual y-oscillation is pumped by the
-%   fast 3 s detour holds in the leg-5 tip rounding (and the
-%   5 s Ring 3 gate hold), so the three tip detours between
-%   Ring 3 and Gate 2 get HOLD_DETOUR_TIP = 5 s again; the
-%   other detours stay at 3 s, gates stay at 5 s, settle
-%   stays at 15 s.  Expected trajectory about 73 s):
+%   Method (version 34 -- push faster from the clean v33.  Run #42
+%   (v33) passed clean in 84.15 s with 0.099 m clearance, better
+%   than v30 on both counts.  The gate holds stay at 5 s (Ring 3
+%   is already the tightest pass at 0.348 m, so the gates are not
+%   touched); the cuts are the other detours 3 s -> 2 s, the
+%   settle 15 s -> 12 s (the tip detours at 5 s now feed the
+%   settle a smaller swing, so 12 s should suffice), and the
+%   home hold 3 s -> 2 s.  Expected trajectory about 65 s):
 %   the desired position is PIECEWISE CONSTANT.  It JUMPS
 %   instantly from one waypoint to the next (a step) and then
 %   HOLDS there while the drone flies to it and settles.  This
@@ -47,15 +44,14 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   to get within 0.15 m and a 2 m step about 7 s.  Version 30
 %   held each gate for 8 s and each detour for 5 s, which flew
 %   clean but slow (trajectory 99 s, flight 110.58 s).  Version
-%   31 cut everything (gate 5 s, detour 3 s, settle 10 s) and
-%   flew in 73.15 s but grazed Red 4 by 0.002 m at Gate 2.
-%   Version 32 restored only the settle to 15 s and still
-%   touched Red 4 by 0.000 m: 5 s more settle only bought
-%   0.002 m, so the oscillation is pumped, not under-decayed.
-%   Version 33 restores the three leg-5 tip detours (between
-%   Ring 3 and Gate 2, the ones that pump the swing into
-%   Gate 2) to 5 s and keeps the other detours at 3 s.  If
-%   v33 still touches, all detours go back to 5 s (v34).
+%   33 (gate 5 s, other detours 3 s, leg-5 tip detours 5 s,
+%   settle 15 s) passed clean in 84.15 s with 0.099 m
+%   clearance.  Version 34 keeps the gate holds at 5 s and
+%   the tip detours at 5 s, and cuts only the other detours
+%   (3 s -> 2 s), the settle (15 s -> 12 s) and the home
+%   hold (3 s -> 2 s).  If v34 collides, the settle goes
+%   back to 15 s first; the gate holds are not cut further
+%   because Ring 3 is already the tightest pass.
 %
 %   NOTE on velocity / acceleration: for a step input the
 %   commanded velocity is zero during every hold (the drone
@@ -77,11 +73,11 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 
 % ---- Parameters ----
 HOLD_GATE   = 5.0;  % hold time at each gate (s) -- v31: was 8.0
-HOLD_DETOUR = 3.0;  % hold time at each detour waypoint (s) -- v31: was 5.0
-HOLD_DETOUR_TIP = 5.0; % hold time at the leg-5 tip detours (Ring 3 -> Gate 2) -- v33: restored to 5.0, the others stay at 3.0
-HOLD_SETTLE = 15.0; % long settle hold at the detour just before Gate 2 (s) -- v32: restored from v31's 10.0
+HOLD_DETOUR = 2.0;  % hold time at each detour waypoint (s) -- v34: was 3.0 (tip detours stay at 5.0)
+HOLD_DETOUR_TIP = 5.0; % hold time at the leg-5 tip detours (Ring 3 -> Gate 2) -- v33: restored to 5.0, unchanged in v34
+HOLD_SETTLE = 12.0; % long settle hold at the detour just before Gate 2 (s) -- v34: was 15.0
 HOLD_TAKE   = 1.0;  % hold time at the top of take-off (s) -- v31: was 2.0
-HOLD_HOME   = 3.0;  % hold time above the origin before landing (s) -- v31: was 5.0
+HOLD_HOME   = 2.0;  % hold time above the origin before landing (s) -- v34: was 3.0
 DT          = 0.01; % sampling period (s)
 
 % ---- 3D waypoints ----
@@ -220,6 +216,6 @@ end
 % The final sample is exactly the final waypoint.
 traj(end, :) = W(n, :);
 
-fprintf('Motion planning (step commands v33): %d waypoints, total time = %.2f s\n', n, t_total);
+fprintf('Motion planning (step commands v34): %d waypoints, total time = %.2f s\n', n, t_total);
 fprintf('  holds: gate %.0f s, detour %.0f s, leg-5 tip detour %.0f s; commanded velocity is zero during holds (step input, as in the supplied demo)\n', HOLD_GATE, HOLD_DETOUR, HOLD_DETOUR_TIP);
 end
