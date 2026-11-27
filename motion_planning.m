@@ -3,7 +3,11 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %
 %   [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoints_xy)
 %
-%   Method (version 30 -- STEP commands, like the supplied demo, plus both return detours shifted west of Red 5, every long return step split, and a 15 s settle hold before Gate 2):
+%   Method (version 31 -- FASTER holds: gate 5 s, detour 3 s, settle
+%   10 s before Gate 2, take-off 1 s, home 3 s.  Same step commands
+%   and same west-shift / return-split as v30; only the hold times
+%   are shorter, to cut the flight time.  Expected trajectory
+%   about 62 s instead of 99 s):
 %   the desired position is PIECEWISE CONSTANT.  It JUMPS
 %   instantly from one waypoint to the next (a step) and then
 %   HOLDS there while the drone flies to it and settles.  This
@@ -34,13 +38,17 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   about 30 s too, which will settle that question.
 %
 %   Holds: the step tests show a 1 m step takes about 5 s
-%   to get within 0.15 m and a 2 m step about 7 s, so each
-%   gate is held for HOLD_GATE = 8 s (long enough to pass
-%   well inside 0.5 m and partially settle) and each detour
-%   waypoint for HOLD_DETOUR = 5 s.  The flight is long
-%   (about 69 s) but it is mostly hovering, which the 60 s
-%   hover diagnostic proved is stable.  Passing the gates
-%   is worth far more than flight time.
+%   to get within 0.15 m and a 2 m step about 7 s.  Version 30
+%   held each gate for 8 s and each detour for 5 s, which flew
+%   clean but slow (trajectory 99 s, flight 110.58 s).  Version
+%   31 cuts the holds -- gate 5 s, detour 3 s, settle 10 s --
+%   because a gate only needs the drone to pass within 0.5 m
+%   of its centre, not to fully settle there; the overshoot
+%   carries it through the gate.  The risk is that the swings
+%   compound and touch an obstacle, which the run #39 check
+%   will show.  Passing the gates cleanly is still worth
+%   more than flight time; if v31 collides, the holds go
+%   back up to the v30 values.
 %
 %   NOTE on velocity / acceleration: for a step input the
 %   commanded velocity is zero during every hold (the drone
@@ -61,11 +69,11 @@ function [t_traj, traj, traj_vel, traj_acc, seg_time] = motion_planning(waypoint
 %   Only base MATLAB is used (no toolboxes).
 
 % ---- Parameters ----
-HOLD_GATE   = 8.0;  % hold time at each gate (s)
-HOLD_DETOUR = 5.0;  % hold time at each detour waypoint (s)
-HOLD_SETTLE = 15.0; % long settle hold at the detour just before Gate 2 (s)
-HOLD_TAKE   = 2.0;  % hold time at the top of take-off (s)
-HOLD_HOME   = 5.0;  % hold time above the origin before landing (s)
+HOLD_GATE   = 5.0;  % hold time at each gate (s) -- v31: was 8.0
+HOLD_DETOUR = 3.0;  % hold time at each detour waypoint (s) -- v31: was 5.0
+HOLD_SETTLE = 10.0; % long settle hold at the detour just before Gate 2 (s) -- v31: was 15.0
+HOLD_TAKE   = 1.0;  % hold time at the top of take-off (s) -- v31: was 2.0
+HOLD_HOME   = 3.0;  % hold time above the origin before landing (s) -- v31: was 5.0
 DT          = 0.01; % sampling period (s)
 
 % ---- 3D waypoints ----
@@ -194,6 +202,6 @@ end
 % The final sample is exactly the final waypoint.
 traj(end, :) = W(n, :);
 
-fprintf('Motion planning (step commands v11): %d waypoints, total time = %.2f s\n', n, t_total);
+fprintf('Motion planning (step commands v31): %d waypoints, total time = %.2f s\n', n, t_total);
 fprintf('  holds: gate %.0f s, detour %.0f s; commanded velocity is zero during holds (step input, as in the supplied demo)\n', HOLD_GATE, HOLD_DETOUR);
 end
